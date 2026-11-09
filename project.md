@@ -1294,7 +1294,7 @@ half of what is converted out of sight.
   usually goes into another tool.
 - **Neither the reference image nor the source photo is ever included in an
   export.** They are inputs, not art.
-- Filename: `voidpixlr-<size>x<size>-<scale>x.png`.
+- Filename: `voidpixelatr-<size>x<size>-<scale>x.png`.
 - Triggered by a temporary `<a download>` element.
 - Scale options are filtered by the 4096×4096 cap (§6.6).
 
@@ -1315,7 +1315,9 @@ half of what is converted out of sight.
 - `palette`: 1–64 hex strings, in order.
 - `pixels`: `height` rows of `width` integers, `-1` = empty, otherwise a
   palette index.
-- Filename: `voidpixlr-<width>x<height>.json`.
+- Filename: `voidpixelatr-<width>x<height>.json`. The *name* is this
+  project's; the `format` key inside is still `voidpixlr`, because it names
+  the format and not the app (§8.2).
 - The `format` and `version` keys are what make v1 files readable: a file
   without them is treated as **v1** and imported with its palette adopted
   as-is.
@@ -2915,7 +2917,7 @@ reason.
 | 20 | 3 shortcuts | 19 shortcuts | A tool needs keyboard access. |
 | 21 | "Double-click to open" | LAN container + nginx + `deploy.sh` | The house deployment shape (§13). |
 | 22 | House alignment | Registry row pointing at this folder, `AGENTS.md`, landing-page sync | TheVoidCo pointer (§2). |
-| 23 | Filenames fixed | `voidpixlr-<size>x<size>.<ext>` | Multiple files need distinct names. |
+| 23 | Filenames fixed | `voidpixelatr-<size>x<size>.<ext>` | Multiple files need distinct names. |
 | 24 | No tests | Dependency-free node logic tests | The house pattern (`website/tests/`). |
 | 25 | Mobile out of scope | Still out of scope | Unchanged — deliberately. |
 | 26 | No community features | Still none | A pixel tool is local-first; adding them means adding a server (§1). |

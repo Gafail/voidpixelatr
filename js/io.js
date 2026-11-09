@@ -11,6 +11,12 @@
    Downloads go out as `data:` URLs. `URL.createObjectURL` is deliberately not
    used anywhere in this app: the shared CSP's `img-src` has no `blob:`, and
    the no-upload guarantee in the spec rules it out by name.
+
+   The exported files are named after THIS project — `voidpixelatr-<w>x<h>...`.
+   The project file *format* is a different thing and stays `voidpixlr`:
+   it names the format, not the app, and it is what lets a conversion made
+   here open in VoidPixlr and an artwork made there open here. The two must
+   not be changed together.
    ========================================================================== */
 
 (function (root) {
@@ -106,7 +112,7 @@
       return { ok: false, error: "the image was too large to export" };
     }
 
-    triggerDownload(href, "voidpixlr-" + width + "x" + height + "-" + scale + "x.png");
+    triggerDownload(href, "voidpixelatr-" + width + "x" + height + "-" + scale + "x.png");
     return { ok: true };
   };
 
@@ -142,7 +148,7 @@
       } catch (error) {
         return Promise.resolve({ ok: false, mode: "error", error: "too large" });
       }
-      triggerDownload(href, "voidpixlr-" + width + "x" + height + "-" + scale + "x.png");
+      triggerDownload(href, "voidpixelatr-" + width + "x" + height + "-" + scale + "x.png");
       return Promise.resolve({ ok: true, mode: "download" });
     }
 
@@ -163,7 +169,7 @@
             reader.onload = () => {
               triggerDownload(
                 reader.result,
-                "voidpixlr-" + width + "x" + height + "-" + scale + "x.png"
+                "voidpixelatr-" + width + "x" + height + "-" + scale + "x.png"
               );
               resolve({ ok: true, mode: "download" });
             };
@@ -190,7 +196,7 @@
     const project = Q.buildProject(width, height, palette, grid);
     IO.downloadText(
       JSON.stringify(project),
-      "voidpixlr-" + width + "x" + height + ".json",
+      "voidpixelatr-" + width + "x" + height + ".json",
       "application/json"
     );
     return project;

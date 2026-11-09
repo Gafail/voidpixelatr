@@ -438,6 +438,58 @@ check("the export shape is exactly as specified", () => {
   assertEqual(project.pixels[0][1], -1, "second pixel");
 });
 
+check("the exports are named after this project", () => {
+  /* The downloaded files belong to VoidPixelatr, so they say so. The
+     project-file FORMAT is a different thing and stays `voidpixlr` — it
+     names the format, not the app, and it is what lets a conversion made
+     here open in VoidPixlr and an artwork made there open here. The two
+     must never be changed together, and a well-meaning "fix" to one
+     silently breaks the other. */
+  const io = read("js/io.js");
+  const quantise = read("js/quantise.js");
+  const spec = read("project.md");
+
+  const names = io.match(/"voidpixlr-[^"]*"/g) || [];
+  assertEqual(names.length, 0, "an export is still named voidpixlr-");
+
+  assert(
+    (io.match(/"voidpixelatr-/g) || []).length >= 4,
+    "the exports are not named voidpixelatr-",
+  );
+  assert(
+    io.includes('"voidpixelatr-" + width + "x" + height + "-" + scale + "x.png"'),
+    "the PNG export is not named voidpixelatr-<w>x<h>-<scale>x.png",
+  );
+  assert(
+    io.includes('"voidpixelatr-" + width + "x" + height + ".json"'),
+    "the JSON export is not named voidpixelatr-<w>x<h>.json",
+  );
+
+  /* The format stays shared. */
+  assert(
+    quantise.includes('format: "voidpixlr"'),
+    "the project-file format is no longer voidpixlr — the sibling project would stop reading it",
+  );
+  assert(
+    quantise.includes('data.format === "voidpixlr"'),
+    "the import no longer recognises the shared project-file format",
+  );
+
+  /* And the specification says the same thing as the code. */
+  assert(
+    spec.includes("voidpixelatr-<size>x<size>-<scale>x.png"),
+    "the spec does not state the PNG export filename",
+  );
+  assert(
+    spec.includes("voidpixelatr-<width>x<height>.json"),
+    "the spec does not state the JSON export filename",
+  );
+  assert(
+    !/Filename: `voidpixlr-/.test(spec),
+    "the spec still states a voidpixlr- export filename",
+  );
+});
+
 check("a rectangular export carries both edges", () => {
   const grid = new Int8Array(64 * 16).fill(-1);
   grid[5] = 2;
