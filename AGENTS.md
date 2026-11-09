@@ -98,6 +98,17 @@ the path; nothing else is needed.
 **One Firefox at a time.** Two suites running at once collide on the
 profile and die with `MarionetteError: the connection closed`.
 
+**"The connection closed" is not always a profile collision.** Two other
+things produce it, and the client now tells them apart. Firefox opens the
+listening socket *before* its Marionette server is ready to talk, so a
+connection made in that window is accepted and closed with no handshake —
+the client retries the handshake until its deadline instead of dying on
+the first try. And if the browser is killed mid-run the error now says
+so, with its pid: the usual cause is the **OOM killer**, which on a busy
+machine takes the headless test Firefox rather than the big browser
+someone has had open all day. Check `dmesg | grep -i oom` before
+suspecting the app.
+
 To run them under the **real shared CSP** — which is the only way to show
 the app works under `script-src 'self'` — use the CSP server instead of
 `./serve.sh`:

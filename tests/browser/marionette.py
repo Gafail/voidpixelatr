@@ -123,9 +123,31 @@ class Marionette:
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                self.socket = socket.create_connection(("127.0.0.1", self.port), timeout=5)
-                break
+                candidate = socket.create_connection(("127.0.0.1", self.port), timeout=5)
             except OSError:
+                if self.process.poll() is not None:
+                    raise MarionetteError("firefox exited before marionette opened")
+                time.sleep(0.25)
+                continue
+
+            # Firefox opens the listening socket before its Marionette server
+            # is ready to talk. A connection made in that window is accepted
+            # and then closed with no handshake, so a single read of it would
+            # kill the run — and the error it raises, "the connection
+            # closed", reads like two suites fighting over the profile when
+            # nothing of the sort is happening. So the handshake is retried
+            # until the deadline: a closed socket means "not ready yet".
+            candidate.settimeout(5)
+            self.socket = candidate
+            try:
+                self._read_packet()  # the handshake
+                break
+            except (MarionetteError, OSError):
+                try:
+                    candidate.close()
+                except OSError:
+                    pass
+                self.socket = None
                 if self.process.poll() is not None:
                     raise MarionetteError("firefox exited before marionette opened")
                 time.sleep(0.25)
@@ -133,7 +155,6 @@ class Marionette:
             raise MarionetteError("timed out waiting for marionette")
 
         self.socket.settimeout(120)
-        self._read_packet()  # the handshake
         self.send("WebDriver:NewSession", {"capabilities": {}})
 
     def stop(self) -> None:
@@ -189,7 +210,21 @@ class Marionette:
         self._write_packet([0, message_id, command, params or {}])
 
         while True:
-            packet = self._read_packet()
+            try:
+                packet = self._read_packet()
+            except MarionetteError as error:
+                # "The connection closed" on its own is a bad diagnosis: it
+                # reads like two suites fighting over the profile, and the
+                # usual cause is nothing of the sort — the browser was
+                # killed mid-run, most often by the OOM killer when the
+                # machine is short of memory. Say which it was.
+                if self.process and self.process.poll() is not None:
+                    raise MarionetteError(
+                        f"{error} — firefox exited (pid {self.process.pid}); "
+                        "it was killed mid-run, which on a busy machine usually "
+                        "means the OOM killer"
+                    ) from error
+                raise
             if not isinstance(packet, list) or len(packet) < 4:
                 continue
             kind, reply_id, reply_command, reply_params = packet[0], packet[1], packet[2], packet[3]
