@@ -6,7 +6,7 @@ Load a photo, frame it under a grid, adjust it, pull a palette out of it,
 convert it. It all happens in your browser — no build step, no dependencies,
 no server, no upload.
 
-![The photo framed under the grid, and the converted result on the canvas](docs/shots/02-photo-framed.png)
+![The photo framed under the grid, and the converted pixel art on the canvas](docs/shots/04-converted.png)
 
 ---
 
@@ -88,19 +88,19 @@ never on a server. **Forget everything** wipes the lot in one click.
 It is a folder of static files. There is nothing to install.
 
 ```bash
-./serve.sh          # http://127.0.0.1:8792
+./scripts/serve.sh          # http://127.0.0.1:8792
 ```
 
 Or just open `index.html` — it works over `file://` too.
 
 To publish it as a static site, point any web server at the folder. It needs
 no runtime, no backend and no database. If you serve it with nginx, the
-included `ops/nginx/voidpixelatr.conf` is a working single-site vhost.
+included `deploy/nginx/voidpixelatr.conf` is a working single-site vhost.
 
 ## Testing
 
 ```bash
-node tests/voidpixelatr.test.mjs   # 141 logic checks, no dependencies
+node tests/voidpixelatr.test.mjs   # 143 logic checks, no dependencies
 
 python3 tools/make-test-images.py /tmp/vp-images
 python3 tests/browser/e2e.py        # 101 end-to-end checks in a real Firefox
@@ -144,6 +144,7 @@ script and no inline event handler, so `script-src 'self'` allows it.
 
 ```
 index.html          the markup
+404.html            the error page
 css/style.css       every style and every token
 js/quantise.js      the pure algorithm layer — no DOM
 js/palette.js       the palette model
@@ -155,6 +156,11 @@ js/workspace.js     the pipeline
 js/menu.js          the menu and the colour pop-over
 js/app.js           the bootstrap
 ```
+
+Everything that is not the site itself lives in a named folder: `scripts/` for
+the runnable tooling, `deploy/` for what gets installed on the box, `tests/`
+for the suites, `tools/` for the test-image maker, and `docs/` for the
+screenshots.
 
 ## The specification
 

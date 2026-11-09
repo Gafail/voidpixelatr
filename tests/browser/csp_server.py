@@ -7,7 +7,7 @@ looks: criterion 58 says the app "runs clean under the shared CSP", and a
 server with no CSP cannot show that.
 
 This server sends exactly the headers in the shared security snippet
-(ops/nginx-snippets/security-headers.conf), parsed out of the real file
+(deploy/nginx/security-headers.conf), parsed out of the real file
 rather than transcribed, so it cannot drift from what nginx will send. If
 the snippet changes, this changes with it.
 
@@ -62,7 +62,7 @@ def find_snippet() -> Path:
             return candidate
 
     raise SystemExit(
-        "error: could not find ops/nginx-snippets/security-headers.conf.\n"
+        "error: could not find deploy/nginx/security-headers.conf.\n"
         "       It ships with this repository — check the checkout is complete."
     )
 

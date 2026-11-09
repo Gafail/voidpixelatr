@@ -2,8 +2,8 @@
 # VoidPixelatr — deploy to the LAN host.
 #
 # Usage:
-#   ./deploy.sh              # deploy to the registered host
-#   ./deploy.sh <host>       # deploy to a specific host (key auth)
+#   ./scripts/deploy.sh              # deploy to the registered host
+#   ./scripts/deploy.sh <host>       # deploy to a specific host (key auth)
 #
 # What it does:
 #   1. rsyncs the site files into the webroot
@@ -17,18 +17,21 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
 # The umbrella repo holds the shared nginx snippets and the host keys. This
 # project is standalone: it is a SIBLING of the umbrella on the Desktop
 # (~/Desktop/voidpixelatr and ~/Desktop/TheVoidCo), not a child of it. So the
 # umbrella is found by walking up the tree, and then by looking at the
 # siblings of this folder. Set REPO_ROOT to override both.
+#
 # Is this directory the umbrella repository?
 #
-# The shared headers are vendored into THIS project too, so the old test —
-# "does it have ops/nginx-snippets/security-headers.conf?" — would match this
-# folder and point REPO_ROOT at itself. The umbrella is the one that also
-# holds the shared deploy key, so that is what tells them apart.
+# The umbrella keeps its snippet at ops/nginx-snippets/ and its deploy key at
+# ops/keys/. This project keeps its own copy of the snippet under deploy/ and
+# has no key directory at all, so the two can never be mistaken for one
+# another — which matters, because a REPO_ROOT pointing at this folder would
+# look for a key that is not here.
 is_umbrella() {
   [ -f "$1/ops/nginx-snippets/security-headers.conf" ] &&
     [ -d "$1/ops/keys" ]
@@ -58,13 +61,13 @@ find_repo_root() {
   return 1
 }
 
-REPO_ROOT="$(find_repo_root "$SCRIPT_DIR" || true)"
+REPO_ROOT="$(find_repo_root "$PROJECT_ROOT" || true)"
 
 # The shared security headers are vendored into this repository, so the deploy
 # works on a clone that has no umbrella beside it. When the umbrella IS there,
 # its copy is the one that gets installed — it is the file nginx serves the
 # rest of the family from — and a node test checks the two agree.
-LOCAL_SNIPPET="$SCRIPT_DIR/ops/nginx-snippets/security-headers.conf"
+LOCAL_SNIPPET="$PROJECT_ROOT/deploy/nginx/security-headers.conf"
 if [ -n "${REPO_ROOT:-}" ] && [ -f "$REPO_ROOT/ops/nginx-snippets/security-headers.conf" ]; then
   SNIPPET="$REPO_ROOT/ops/nginx-snippets/security-headers.conf"
 elif [ -f "$LOCAL_SNIPPET" ]; then
@@ -72,7 +75,7 @@ elif [ -f "$LOCAL_SNIPPET" ]; then
 else
   echo "error: could not find the shared security headers." >&2
   echo "       They ship with this repository at" >&2
-  echo "       ops/nginx-snippets/security-headers.conf — check the checkout" >&2
+  echo "       deploy/nginx/security-headers.conf — check the checkout" >&2
   echo "       is complete." >&2
   exit 1
 fi
@@ -116,8 +119,8 @@ if [ "$HOST" = "$PLACEHOLDER_IP" ]; then
   echo "  The address is reserved in the router by the container's MAC," >&2
   echo "  so it is only known once the container is provisioned." >&2
   echo "" >&2
-  echo "  Pass it explicitly:   ./deploy.sh 192.168.100.xxx" >&2
-  echo "  or set it for a run:  VOIDPIXELATR_HOST=192.168.100.xxx ./deploy.sh" >&2
+  echo "  Pass it explicitly:   ./scripts/deploy.sh 192.168.100.xxx" >&2
+  echo "  or set it for a run:  VOIDPIXELATR_HOST=192.168.100.xxx ./scripts/deploy.sh" >&2
   echo "" >&2
   echo "  The placeholder is ${PLACEHOLDER_IP} (RFC 5737 documentation range)." >&2
   echo "  Deploying to it would be meaningless; refusing." >&2
@@ -151,9 +154,8 @@ RSYNC=(rsync -az --delete --chmod=D755,F644
        --exclude='dist' --exclude='www' --exclude='__pycache__'
        --exclude='*.pyc' --exclude='.env'
        --exclude='/docs/' --exclude='/tests/' --exclude='/scripts/'
-       --exclude='/tools/' --exclude='/ops/' --exclude='*.md'
-       --exclude='/.github/'
-       --exclude='/serve.sh' --exclude='/deploy.sh')
+       --exclude='/tools/' --exclude='/deploy/' --exclude='*.md'
+       --exclude='/.github/')
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 
@@ -161,7 +163,7 @@ say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 say "Uploading site files to ${HOST}:${WEBROOT}"
 "${SSH[@]}" "$USER@$HOST" "mkdir -p '$WEBROOT' /var/log/webapps"
 "${RSYNC[@]}" --rsync-path="mkdir -p '$WEBROOT' && rsync" \
-  "$SCRIPT_DIR/" "$USER@$HOST:$WEBROOT/"
+  "$PROJECT_ROOT/" "$USER@$HOST:$WEBROOT/"
 
 # 2. Install the nginx vhost and the shared security headers.
 #    The source files live here, so they are copied across first — `install`
@@ -171,7 +173,7 @@ say "Installing nginx configuration"
 
 "${SCP[@]}" "$SNIPPET" \
   "$USER@$HOST:/tmp/security-headers.conf"
-"${SCP[@]}" "$SCRIPT_DIR/ops/nginx/voidpixelatr.conf" \
+"${SCP[@]}" "$PROJECT_ROOT/deploy/nginx/voidpixelatr.conf" \
   "$USER@$HOST:/tmp/voidpixelatr.conf"
 
 "${SSH[@]}" "$USER@$HOST" \

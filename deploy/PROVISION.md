@@ -1,12 +1,17 @@
-# VoidPixlr — provisioning the container
+# VoidPixelatr — provisioning the container
 
-VoidPixlr is a **static site**. Its container serves one thing: files out of
-`/var/www/voidpixlr` over nginx. No runtime, no service, no proxy, no tunnel,
-no domain.
+VoidPixelatr is a **static site**. Its container serves one thing: files out
+of `/var/www/voidpixelatr` over nginx. No runtime, no service, no proxy, no
+tunnel, no domain.
 
 The steps below follow `~/Desktop/Local-LXC-Host.md` §3. Two of them need
 Proxmox and router credentials that are **not** stored in this repo, so they
 have to be done by hand in the web UIs.
+
+> **`.112` is already live.** The container for this project exists, with the
+> hostname `VoidPixelatr` and the address `192.168.100.112`. This checklist is
+> kept for the day the project needs a *second* box, or for a rebuild from
+> scratch.
 
 ---
 
@@ -18,7 +23,7 @@ have to be done by hand in the web UIs.
 |---|---|
 | Source | **the template** (based on `.197`) — **not** `.199`, which would copy TheVoidCo's own site across |
 | Clone type | **Full** — a linked clone shares disks with the source |
-| Hostname | `voidpixlr` |
+| Hostname | `VoidPixelatr` |
 | Storage | whatever the other containers use |
 | Cores | 1 |
 | Memory | 256 MB |
@@ -40,6 +45,9 @@ following are taken — check the router's lease table before choosing:
 
 | Address | What it is |
 |---|---|
+| `.100` | VoidPixlr |
+| `.109` | voidtrackr |
+| `.112` | **VoidPixelatr — this one** |
 | `.191` | voidwalkr |
 | `.195` | VoidFlippr |
 | `.197` | retired |
@@ -53,23 +61,23 @@ following are taken — check the router's lease table before choosing:
 The guest needs no change at all for a DHCP reservation. If you would rather
 pin it in the guest, see §3 step 2(b) of the runbook.
 
-> The checked-in `ops/nginx/voidpixlr.conf` names `192.0.2.0` — the RFC 5737
-> documentation address — as a placeholder. `deploy.sh` substitutes the real
-> address when it installs the file. **Leave the placeholder alone**; it can
-> never collide with a live machine.
+> The checked-in `deploy/nginx/voidpixelatr.conf` names `192.0.2.0` — the RFC
+> 5737 documentation address — as a placeholder. `scripts/deploy.sh`
+> substitutes the real address when it installs the file. **Leave the
+> placeholder alone**; it can never collide with a live machine.
 
 ---
 
 ## 3. Set the hostname
 
 ```bash
-pct set <new-vmid> --hostname voidpixlr
+pct set <new-vmid> --hostname VoidPixelatr
 ```
 
 or from inside the guest:
 
 ```bash
-hostnamectl set-hostname voidpixlr
+hostnamectl set-hostname VoidPixelatr
 ```
 
 ---
@@ -121,12 +129,12 @@ ssh-copy-id -i ops/keys/thevoidco-lxc-id_ed25519.pub root@<new-ip>
 **`ops/vm.sh`** — uncomment and fill in the three entries:
 
 ```bash
-[voidpixlr]="<the address you reserved>"          # VM_HOSTS
-[voidpixlr]="root"                                 # VM_USERS
-[voidpixlr]="ops/keys/thevoidco-lxc-id_ed25519"   # VM_KEYS — the shared key
+[voidpixelatr]="<the address you reserved>"        # VM_HOSTS
+[voidpixelatr]="root"                               # VM_USERS
+[voidpixelatr]="ops/keys/thevoidco-lxc-id_ed25519" # VM_KEYS — the shared key
 ```
 
-**`CREDENTIALS.md`** — the key-based host table already lists `voidpixlr`.
+**`CREDENTIALS.md`** — the key-based host table already lists `voidpixelatr`.
 There is **no password** for it: it authenticates with the shared key, so no
 `export` line is needed. Never paste the private key anywhere — reference the
 path.
@@ -136,7 +144,7 @@ path.
 ## 7. Verify
 
 ```bash
-./ops/vm.sh voidpixlr 'hostname; uptime; nginx -t'
+./ops/vm.sh voidpixelatr 'hostname; uptime; nginx -t'
 ```
 
 ---
@@ -144,22 +152,22 @@ path.
 ## 8. Deploy
 
 ```bash
-cd projects/voidpixlr
-./deploy.sh <the address you reserved>
+cd ~/Desktop/voidpixelatr
+./scripts/deploy.sh <the address you reserved>
 ```
 
 This rsyncs the site files, installs the vhost and the shared
 security-headers snippet, runs `nginx -t` before reloading (so a broken
 config never takes the running site down), and smoke-tests the result.
 
-If the address changes, `deploy.sh` takes it as an argument, so no file needs
-editing.
+If the address changes, `scripts/deploy.sh` takes it as an argument, so no file
+needs editing.
 
 ---
 
 ## 9. Assess the resources
 
-A live container is not a finished container. VoidPixlr is a static site, so
+A live container is not a finished container. VoidPixelatr is a static site, so
 the floor — 1 core, 256 MB, 32 GB — should hold; measure under load and
 report if it does not. The Proxmox resources are changed by hand in the web
 UI, so the handover is a **report**, not an edit.

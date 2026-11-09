@@ -85,24 +85,24 @@ Every section ends with a **Decision** block recording the choices made for v2.
 >      `192.168.100.200`, which is already occupied on the LAN by an
 >      unrelated device. A checked-in config that names a live address is a
 >      loaded gun. It now names **`192.0.2.0`** — the RFC 5737
->      documentation range, which can never collide — and `deploy.sh`
+>      documentation range, which can never collide — and `scripts/deploy.sh`
 >      substitutes the reserved address when it installs the file, and
 >      **refuses to run** without one (§16.7).
 >   2. **The cloned template's own site would have blocked ours.** The
 >      template's base landing page is `listen 80 default_server`, exactly
 >      like VoidPixlr's vhost, and nginx refuses to start with two default
 >      servers on one port — `[emerg] a duplicate default server for
->      0.0.0.0:80`. `deploy.sh` now removes the other links in
+>      0.0.0.0:80`. `scripts/deploy.sh` now removes the other links in
 >      `sites-enabled` before enabling ours; the files stay in
 >      `sites-available` (§16.7).
 >   3. **The deploy wanted a key of its own.** There is **one** deploy key
 >      for all of TheVoidCo's infrastructure, and a clone inherits it in
 >      `/root/.ssh/authorized_keys`. A per-project key would never have
->      been installed on the container. `deploy.sh` now uses the shared key,
->      and `ops/vm.sh` and `CREDENTIALS.md` register `voidpixlr` as a
+>      been installed on the container. `scripts/deploy.sh` now uses the shared key,
+>      and `ops/vm.sh` and `CREDENTIALS.md` register `voidpixelatr` as a
 >      key-auth host with no password (§16.7).
 >
->   All three are guarded by tests. `ops/PROVISION.md` is the new
+>   All three are guarded by tests. `deploy/PROVISION.md` is the new
 >   provisioning checklist for the container.
 >
 >   **A fourth fault was in the test harness itself.** The browser suites
@@ -200,7 +200,7 @@ Every section ends with a **Decision** block recording the choices made for v2.
 >   Moving the project out broke two things that assumed the umbrella was
 >   an **ancestor** of it, and both were fixed:
 >
->   1. **`deploy.sh` could not find the shared key or the nginx snippet.**
+>   1. **`scripts/deploy.sh` could not find the shared key or the nginx snippet.**
 >      It walked *up* the tree looking for `ops/nginx-snippets/`. The
 >      umbrella is now a **sibling**, so the search also looks at the
 >      siblings of this folder. A deploy from this folder was run and
@@ -487,7 +487,7 @@ The spec still has to agree with the house rules, not just be self-consistent.
 | House rule | v2 status | Notes |
 |---|---|---|
 | Lowercase, no separators: `voidpixelatr` | ✅ | Folder, filenames. |
-| Kebab-case filenames | ✅ | `index.html`, `serve.sh`, `deploy.sh`, `ops/nginx/voidpixelatr.conf`. |
+| Kebab-case filenames | ✅ | `index.html`, `scripts/serve.sh`, `scripts/deploy.sh`, `deploy/nginx/voidpixelatr.conf`. |
 | Vanilla HTML/CSS/JS, no framework unless project-specific | ✅ | No framework. |
 | No build step | ✅ | Files are served as-is. |
 | No dependencies, no npm | ✅ | |
@@ -496,7 +496,7 @@ The spec still has to agree with the house rules, not just be self-consistent.
 | No third-party assets, no CDN, no web fonts | ✅ | System font stack only. |
 | Static site: nginx serves files, no runtime behind it | ✅ | No Node, no systemd unit. |
 | One container, one site | ✅ | Its own container, serving this site alone — §13.1. |
-| Don't edit the live server directly — go through `deploy.sh` | ✅ | §13.4. |
+| Don't edit the live server directly — go through `scripts/deploy.sh` | ✅ | §13.4. |
 | Every project is standalone — no copies, no symlinks | ✅ | This folder is the project. The umbrella holds no copy of it. |
 | `AGENTS.md` required per project | ✅ | In this project's own folder. |
 | Registry row is the canonical list | ✅ | The row is in TheVoidCo's root `README.md` and the landing page — §13.1. |
@@ -1960,11 +1960,14 @@ voidpixelatr/
 │   ├── io.js             ← export/import PNG & JSON
 │   ├── storage.js        ← localStorage persistence
 │   └── menu.js           ← the menu sections and the colour pop-over
-├── serve.sh              ← local preview (python3 http.server)
-├── deploy.sh             ← rsync + vhost install + nginx reload + smoke test
-├── ops/
+├── scripts/
+│   ├── serve.sh            ← local preview (python3 http.server)
+│   └── deploy.sh           ← rsync + vhost install + nginx reload + smoke test
+├── deploy/
+│   ├── PROVISION.md        ← the checklist for provisioning a box
 │   └── nginx/
-│       └── voidpixelatr.conf ← the vhost
+│       ├── voidpixelatr.conf    ← the vhost
+│       └── security-headers.conf ← the shared security headers
 ├── tests/
 │   ├── voidpixelatr.test.mjs ← dependency-free logic tests (node)
 │   └── browser/          ← the Firefox suites, driven over Marionette
@@ -1983,9 +1986,9 @@ There is **no `history.js`**. The undo stack went with the brush (§7.5).
   exposes one global namespace object (`VP`, `VP.canvas`, `VP.palette`, …).
   No build step means no module bundler, and one namespace means no globals
   soup.
-- `serve.sh` mirrors `TheVoidCo/website/serve.sh` — `python3 -m
+- `scripts/serve.sh` mirrors `TheVoidCo/website/serve.sh` — `python3 -m
   http.server <port>`, no dependencies.
-- `deploy.sh` mirrors `TheVoidCo/website/deploy.sh` — rsync, install the
+- `scripts/deploy.sh` mirrors `TheVoidCo/website/deploy.sh` — rsync, install the
   vhost, `nginx -t`, reload, smoke test. **It has been run**, against the
   container at `192.168.100.112` (§13).
 - Tests are dependency-free `node` scripts in the style of
@@ -2011,7 +2014,7 @@ all safe.
   with the house pattern. Still no build step and still no dependencies.
 - Plain scripts over ES modules, so the app also works when opened directly
   from the filesystem for quick local use.
-- `serve.sh` and `deploy.sh` are copied from the house pattern rather than
+- `scripts/serve.sh` and `scripts/deploy.sh` are copied from the house pattern rather than
   invented, so the operational surface is identical to the website's.
 
 ---
@@ -2030,9 +2033,9 @@ project-file format and nothing else, and each has its own box.
 
 | Piece | State |
 |---|---|
-| `ops/nginx/voidpixelatr.conf` | Present. The vhost, with the `192.0.2.0` placeholder. |
-| `deploy.sh` | Present. rsync → install the vhost → `nginx -t` → reload → smoke test. |
-| `ops/PROVISION.md` | Present. The checklist for provisioning a box. |
+| `deploy/nginx/voidpixelatr.conf` | Present. The vhost, with the `192.0.2.0` placeholder. |
+| `scripts/deploy.sh` | Present. rsync → install the vhost → `nginx -t` → reload → smoke test. |
+| `deploy/PROVISION.md` | Present. The checklist for provisioning a box. |
 | A container | **Yes** — `.112`, hostname `VoidPixelatr`, 1 core / 256 MB / 32 GB. |
 | A registry row in TheVoidCo | **Yes** — root `README.md`, `ops/vm.sh`, `CREDENTIALS.md`, landing page. |
 | A GitHub remote | **A public mirror — a backup, and only a backup.** See §13.7. |
@@ -2055,13 +2058,13 @@ snippet included unmodified.
 The address in the checked-in file is `192.0.2.0` — the RFC 5737
 documentation range. A checked-in config that names a live address is a
 loaded gun: one did once, and it blew away whatever was answering on it.
-`deploy.sh` substitutes the reserved address when it installs the file and
+`scripts/deploy.sh` substitutes the reserved address when it installs the file and
 **refuses to run** without one. The file installed on the box therefore reads
 `server_name 192.168.100.112 voidpixelatr voidpixelatr.local _`.
 
 ### 13.4 The deploy path
 1. `rsync` the site files into `/var/www/voidpixelatr`.
-2. Install `ops/nginx/voidpixelatr.conf` and the shared security-headers
+2. Install `deploy/nginx/voidpixelatr.conf` and the shared security-headers
    snippet.
 3. **Remove the template's own enabled site.** Both are
    `listen 80 default_server`, and nginx refuses to start with two of them:
@@ -2094,7 +2097,7 @@ The mirror is public, because a backup nobody can read is not a backup.
 ### Decision
 - **Deployed, on its own box, with a registry row.** The umbrella points at
   this folder; the source stays here.
-- `./deploy.sh 192.168.100.112` is the way to push a change. The placeholder
+- `./scripts/deploy.sh 192.168.100.112` is the way to push a change. The placeholder
   address stays in the repository — only the installed file carries the real
   one.
 - **GitHub mirrors the source and nothing else.** It is a backup; the
@@ -2276,7 +2279,7 @@ The build ships with three test suites, all dependency-free:
 
 | Suite | What it runs against | Checks |
 |---|---|---|
-| `node tests/voidpixelatr.test.mjs` | the pure algorithm layer, the models, and the house rules read out of the real source files | 141 |
+| `node tests/voidpixelatr.test.mjs` | the pure algorithm layer, the models, and the house rules read out of the real source files | 143 |
 | `python3 tests/browser/e2e.py` | the real app in a real Firefox, driven over Marionette | 101 |
 | `python3 tests/browser/hostile.py` | the real app, fed the things that should not work | 33 |
 | `python3 tests/browser/live.py` | a served site, over the real CSP | 11 |
@@ -2347,7 +2350,7 @@ deployment**. All three are now fixed and guarded by tests.
 device. A checked-in configuration that names a live address is a loaded
 gun: the first deploy would have written to whatever was answering there.
 The vhost now names **`192.0.2.0`** — the RFC 5737 documentation range,
-which by construction can never be a real machine — and `deploy.sh`
+which by construction can never be a real machine — and `scripts/deploy.sh`
 substitutes the reserved address when it installs the file. The script
 **refuses to run** without an address, and refuses any host that is not an
 IP address.
@@ -2362,7 +2365,7 @@ default servers on one port:
 ```
 
 This was reproduced on a real nginx before the fix and confirmed clean
-after it. `deploy.sh` now removes the other links in `sites-enabled` before
+after it. `scripts/deploy.sh` now removes the other links in `sites-enabled` before
 enabling ours. The files stay in `sites-available`, so the template's page
 is one `ln -sf` away from coming back.
 
@@ -2370,13 +2373,13 @@ is one `ln -sf` away from coming back.
 of TheVoidCo's infrastructure, and a container cloned from the template
 inherits it in `/root/.ssh/authorized_keys`. A per-project key would never
 have been installed on the container, and would have broken the house rule
-that a shared key is the only one. `deploy.sh` uses the shared key;
-`ops/vm.sh` and `CREDENTIALS.md` register `voidpixlr` as a key-auth host
+that a shared key is the only one. `scripts/deploy.sh` uses the shared key;
+`ops/vm.sh` and `CREDENTIALS.md` register `voidpixelatr` as a key-auth host
 with **no password**, so `CREDENTIALS.md` needs no `export` line for it.
 
 **What still needs a human.** Cloning the template and reserving the
 address in the router both need Proxmox and router credentials, which are
-deliberately not stored in this repo. `ops/PROVISION.md` is the checklist,
+deliberately not stored in this repo. `deploy/PROVISION.md` is the checklist,
 step by step, with the addresses that are already taken.
 
 ### 16.8 The UI faults, and what the measurements were
@@ -2915,7 +2918,7 @@ reason.
 | 18 | Copy PNG can fail | Clipboard, else download fallback | A button that dead-ends is a broken button. |
 | 19 | No persistence | `localStorage` autosave **+ IndexedDB for the photo** | Palettes that vanish on reload are useless, and neither should the photo. **Approved house-rule exception** (§9.4). |
 | 20 | 3 shortcuts | 19 shortcuts | A tool needs keyboard access. |
-| 21 | "Double-click to open" | LAN container + nginx + `deploy.sh` | The house deployment shape (§13). |
+| 21 | "Double-click to open" | LAN container + nginx + `scripts/deploy.sh` | The house deployment shape (§13). |
 | 22 | House alignment | Registry row pointing at this folder, `AGENTS.md`, landing-page sync | TheVoidCo pointer (§2). |
 | 23 | Filenames fixed | `voidpixelatr-<size>x<size>.<ext>` | Multiple files need distinct names. |
 | 24 | No tests | Dependency-free node logic tests | The house pattern (`website/tests/`). |
@@ -3005,7 +3008,7 @@ r14 and split along the idea.
 
 - Nine JavaScript modules, one stylesheet, one HTML file. No build step, no
   dependencies, no framework.
-- **141 node checks, 101 end-to-end browser checks, 33 hostile-input
+- **143 node checks, 101 end-to-end browser checks, 33 hostile-input
   checks** — all passing, all dependency-free. The browser suites also pass
   against the real shared CSP, and against the live site at
   `http://192.168.100.112/`.
@@ -3031,10 +3034,10 @@ build, serving at **http://192.168.100.112/**.
 
 - Nine JavaScript modules, one stylesheet, one HTML file. No build step, no
   dependencies, no framework.
-- 141 node checks, 101 end-to-end browser checks, 33 hostile-input checks,
+- 143 node checks, 101 end-to-end browser checks, 33 hostile-input checks,
   11 live-site checks — all passing, all dependency-free. Both browser
   suites also pass against the real shared CSP.
-- **Deployed and verified.** `./deploy.sh 192.168.100.112` installs the
+- **Deployed and verified.** `./scripts/deploy.sh 192.168.100.112` installs the
   site, the vhost and the shared security-headers snippet, disables the
   template's own site, validates with `nginx -t` before reloading, and
   smoke-tests the result. The live site serves the exact shared CSP, and
@@ -3048,7 +3051,7 @@ build, serving at **http://192.168.100.112/**.
   house floor is 1 core / 256 MB, and the container sits **at** it — it needs
   a fraction of one core, so no resize is needed.
 - The vhost in the repository carries `192.0.2.0` — the RFC 5737
-  documentation range — as a placeholder. `deploy.sh` substitutes the real
+  documentation range — as a placeholder. `scripts/deploy.sh` substitutes the real
   address when it installs it and refuses to run without one, so a
   checked-in config can never name a machine that is already serving
   something else.

@@ -37,8 +37,8 @@ VoidPixlr. That is the whole point of the split.
 - **Rendering:** a layered buffer model, not DOM nodes. `artBuffer` and
   `previewBuffer` are offscreen canvases at art resolution; the visible
   canvas composites them. 256×256 is 65 536 cells and stays responsive.
-- **Deploy pipeline:** `./deploy.sh` → rsync → install the vhost and the
-  shared nginx snippet → `nginx -t` → reload → smoke test. **Never run.**
+- **Deploy pipeline:** `./scripts/deploy.sh` → rsync → install the vhost and the
+  shared nginx snippet → `nginx -t` → reload → smoke test.
 
 ## File map
 
@@ -67,7 +67,11 @@ VoidPixlr. That is the whole point of the split.
   pop-over, which floats over the canvas beside the button that opened it.
 - `js/app.js` — the bootstrap: wiring, the keyboard, drag and drop, paste,
   the inline panels, the autosave.
-- `ops/nginx/voidpixelatr.conf` — the vhost. **Never installed.**
+- `deploy/nginx/voidpixelatr.conf` — the vhost. Installed on the box.
+- `deploy/nginx/security-headers.conf` — the shared security headers, vendored
+  so a clone can test and deploy on its own.
+- `scripts/serve.sh` — the local preview server.
+- `scripts/deploy.sh` — rsync, install the vhost, `nginx -t`, reload, smoke test.
 - `tests/voidpixelatr.test.mjs` — the dependency-free node tests.
 - `tests/browser/marionette.py` — a minimal Marionette client: a real
   Firefox, driven with no dependencies and no geckodriver.
@@ -84,9 +88,9 @@ There is **no `js/history.js`**. The undo stack went with the brush.
 ## How to test
 
 ```bash
-node tests/voidpixelatr.test.mjs       # 141 logic checks, no dependencies
+node tests/voidpixelatr.test.mjs       # 143 logic checks, no dependencies
 
-./serve.sh                              # then, in another shell:
+./scripts/serve.sh                      # then, in another shell:
 python3 tools/make-test-images.py /tmp/vp-images
 python3 tests/browser/e2e.py            # 101 end-to-end checks
 python3 tests/browser/hostile.py        # 33 hostile-input checks
@@ -111,7 +115,7 @@ suspecting the app.
 
 To run them under the **real shared CSP** — which is the only way to show
 the app works under `script-src 'self'` — use the CSP server instead of
-`./serve.sh`:
+`./scripts/serve.sh`:
 
 ```bash
 python3 tests/browser/csp_server.py --port 8793 &
@@ -133,7 +137,7 @@ pointer.
 To push a change:
 
 ```bash
-./deploy.sh 192.168.100.112
+./scripts/deploy.sh 192.168.100.112
 ```
 
 The address is mandatory and the script refuses to run without one. It
@@ -147,7 +151,7 @@ where anything is deployed to — the container above is the only thing
 serving it. Nothing runs on GitHub: no CI, no actions, no releases. If the
 mirror and this folder ever disagree, this folder is right.
 
-The first deployment went through the full runbook in `ops/PROVISION.md`, and
+The first deployment went through the full runbook in `deploy/PROVISION.md`, and
 the short version of it — for the day this project needs a *second* box, or
 for a rebuild from scratch:
 
@@ -160,7 +164,7 @@ for a rebuild from scratch:
    deploy key, `ops/keys/thevoidco-lxc-id_ed25519`, which the clone
    inherits in `/root/.ssh/authorized_keys` — there is no per-project key and
    no password, so `CREDENTIALS.md` needs no `export` line for it.
-3. `./deploy.sh <ip>` — the address is mandatory. The script refuses to run
+3. `./scripts/deploy.sh <ip>` — the address is mandatory. The script refuses to run
    without one.
 4. Add the registry row to the umbrella's root `README.md`, pointing at
    **this folder** — `~/Desktop/voidpixelatr/`. The source stays here. The
@@ -307,14 +311,14 @@ page.
   cannot go quietly blind again.
 - **The vhost's address is the placeholder `192.0.2.0`.** That is the RFC
   5737 documentation range, so a checked-in config can never name a live
-  machine. `deploy.sh` substitutes the real address at install time and
+  machine. `scripts/deploy.sh` substitutes the real address at install time and
   refuses to run without one. Do not "fix" it by hard-coding a LAN address:
   `192.168.100.200` is already occupied by an unrelated device, and
   `192.168.100.100` is VoidPixlr's.
 - **The cloned template's own site must be disabled before ours is
   enabled.** Both are `listen 80 default_server`, and nginx refuses to
   start with two of them: `a duplicate default server for 0.0.0.0:80`.
-  `deploy.sh` removes the other links in `sites-enabled`; the files stay in
+  `scripts/deploy.sh` removes the other links in `sites-enabled`; the files stay in
   `sites-available`.
 - **There is one deploy key for all of TheVoidCo.**
   `ops/keys/thevoidco-lxc-id_ed25519`, inherited by every clone. A
@@ -355,7 +359,7 @@ page.
   and the landing page, with the shared deploy key
   `ops/keys/thevoidco-lxc-id_ed25519`.
 - The vhost still carries the placeholder `192.0.2.0` in the repository —
-  **leave it**. `deploy.sh` substitutes the real address when it installs it.
+  **leave it**. `scripts/deploy.sh` substitutes the real address when it installs it.
   A checked-in config must never name a live machine.
 - Resources: 1 core / 256 MB / 32 GB, measured at 5,278 req/s with nginx on
   25% of the core and 60 MB used. **At the house floor — no resize needed.**

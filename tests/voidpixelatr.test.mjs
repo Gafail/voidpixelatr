@@ -1345,8 +1345,8 @@ check("the source limits are stated on the load page", () => {
 
 /* --- the deployment rules -------------------------------------------------- */
 
-const vhost = read("ops/nginx/voidpixelatr.conf");
-const deploy = read("deploy.sh");
+const vhost = read("deploy/nginx/voidpixelatr.conf");
+const deploy = read("scripts", "deploy.sh");
 
 check("the vhost names a documentation address, not a live machine", () => {
   const names = /server_name\s+([^;]+);/.exec(vhost);
@@ -1412,11 +1412,10 @@ check("the deploy ships the site and nothing else", () => {
     "/docs/",
     "/tests/",
     "/tools/",
-    "/ops/",
+    "/scripts/",
+    "/deploy/",
     "*.md",
     "/.github/",
-    "/serve.sh",
-    "/deploy.sh",
   ]) {
     assert(deploy.includes(`'${excluded}'`), `the deploy does not exclude ${excluded}`);
   }
@@ -1470,7 +1469,7 @@ check("the project ships the shared headers, so it stands on its own", () => {
      the CSP server and the deploy script without a sibling checkout. That
      only works if the two copies agree — so when the umbrella's copy is
      sitting alongside, the vendored one is compared against it. */
-  const vendored = read("ops", "nginx-snippets", "security-headers.conf");
+  const vendored = read("deploy", "nginx", "security-headers.conf");
   assert(
     vendored.includes("Content-Security-Policy"),
     "the vendored snippet has no Content-Security-Policy",
