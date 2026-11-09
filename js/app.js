@@ -1,8 +1,12 @@
 /* ==========================================================================
-   VoidPixlr — app.js
+   VoidPixelatr — app.js
    --------------------------------------------------------------------------
    The bootstrap: wiring, keyboard, drag and drop, paste, the inline panels,
    and the autosave.
+
+   This is a pipeline, not a canvas. There is no brush, no eraser, no
+   symmetry and no undo stack — the artwork is converted from a photograph,
+   and the way to change it is to change a setting and convert again.
 
    Nothing here talks to a server. There is no fetch, no XHR, no beacon and
    no form submission anywhere in this application — the only network traffic
@@ -17,8 +21,6 @@
   const APP = (VP.app = {});
 
   const state = {
-    history: null,
-    pendingStroke: null,
     autosaveTimer: null,
     exportScale: 16,
     exportBackground: null,
@@ -32,12 +34,8 @@
       scale: 16,
       fitZoom: false,
       gridVisible: true,
-      symmetry: 0,
       activePalette: "Void Palette",
       activeIndex: 0,
-      refMode: "off",
-      refOpacity: 0.5,
-      refFit: "cover",
       srcPanX: 0,
       srcPanY: 0,
       srcZoom: 0,
@@ -63,12 +61,8 @@
     const prefs = state.prefs;
     prefs.scale = VP.canvas.state.scale;
     prefs.gridVisible = VP.canvas.state.gridVisible;
-    prefs.symmetry = VP.canvas.state.symmetry;
     prefs.activePalette = VP.palette.state.activeName;
     prefs.activeIndex = VP.palette.state.activeIndex;
-    prefs.refMode = VP.reference.state.mode;
-    prefs.refOpacity = VP.reference.state.opacity;
-    prefs.refFit = VP.reference.state.fit;
     prefs.srcPanX = VP.workspace.state.panX;
     prefs.srcPanY = VP.workspace.state.panY;
     prefs.srcZoom = VP.workspace.state.zoom;
@@ -101,9 +95,9 @@
 
   APP.autosave = autosave;
 
-  /* The canvas changed size around it: the Image mode takes half the
-     centre away from it, and the window can do the same. The zoom follows
-     the room, unless the user has pinned it themselves. */
+  /* The canvas changed size around it: the window can do that, and so can
+     the source pane. The zoom follows the room, unless the user has pinned
+     it themselves. */
   APP.onLayoutChange = function onLayoutChange() {
     if (state.prefs.fitZoom) {
       VP.canvas.setScale(VP.canvas.fitScale());
@@ -166,79 +160,21 @@
     });
   }
 
-  /* --- undo and redo ----------------------------------------------------------- */
-
-  function snapshot() {
-    return {
-      width: VP.canvas.state.width,
-      height: VP.canvas.state.height,
-      grid: VP.canvas.grid,
-    };
-  }
-
-  function applySnapshot(snap) {
-    if (!snap) return;
-    if (
-      snap.width !== VP.canvas.state.width ||
-      snap.height !== VP.canvas.state.height
-    ) {
-      VP.canvas.resize(snap.width, snap.height);
-    }
-    VP.canvas.setGrid(snap.grid);
-    autosave();
-    renderAll();
-  }
-
-  function undo() {
-    const snap = state.history.undo(snapshot());
-    if (!snap) return;
-    applySnapshot(snap);
-  }
-
-  function redo() {
-    const snap = state.history.redo(snapshot());
-    if (!snap) return;
-    applySnapshot(snap);
-  }
-
-  /* The canvas calls these at the start and the end of a stroke. */
-  APP.beginStroke = function beginStroke() {
-    state.pendingStroke = {
-      width: VP.canvas.state.width,
-      height: VP.canvas.state.height,
-      grid: Int8Array.from(VP.canvas.grid),
-    };
-  };
-
-  APP.endStroke = function endStroke(changed) {
-    if (state.pendingStroke && changed) {
-      state.history.push(state.pendingStroke);
-    }
-    state.pendingStroke = null;
-    autosave();
-    renderAll();
-  };
-
   /* --- rendering ---------------------------------------------------------------- */
 
   function renderAll() {
     VP.palette.render();
     renderTopBar();
-    renderReferenceStrip();
     renderBottomBar();
-    /* A palette change has to reach the workspace's live preview as well —
-       the swatch grid is only half of it. Without this, switching the
-       palette in the sidebar left the preview showing the previous
-       palette's result. */
-    if (VP.workspace.isOpen()) VP.workspace.refresh();
+    /* A palette change has to reach the live preview as well — the swatch
+       grid is only half of it. Without this, switching the palette in the
+       menu left the preview showing the previous palette's result. */
+    VP.workspace.refresh();
   }
 
   function renderTopBar() {
     syncSizeControls();
     syncCanvasZoom();
-
-    const symmetry = $("symmetry-toggle");
-    if (symmetry) symmetry.textContent = VP.canvas.SYMMETRY[VP.canvas.state.symmetry];
 
     const gridToggle = $("grid-toggle");
     if (gridToggle) {
@@ -248,13 +184,6 @@
       gridToggle.textContent = VP.canvas.state.gridVisible ? "on" : "off";
     }
 
-    const undoButton = $("undo");
-    if (undoButton) undoButton.disabled = !state.history.canUndo;
-    const redoButton = $("redo");
-    if (redoButton) redoButton.disabled = !state.history.canRedo;
-
-    const workspaceToggle = $("workspace-toggle");
-    if (workspaceToggle) workspaceToggle.classList.toggle("is-active", VP.workspace.isOpen());
   }
 
   /* The canvas's zoom slider and its readout. One value, two controls: the
@@ -298,31 +227,6 @@
         ? "X and Y are tied together — the canvas is square. Click to set them separately."
         : "X and Y are separate — the canvas can be a rectangle. Click to tie them together.";
     }
-  }
-
-  function renderReferenceStrip() {
-    const strip = $("reference-strip");
-    if (!strip) return;
-    const has = VP.reference.hasImage();
-    strip.hidden = !has;
-    if (!has) return;
-
-    const name = $("reference-name");
-    const source = VP.reference.state.source;
-    if (name) name.textContent = source ? source.name : "image";
-
-    const mode = $("reference-mode");
-    if (mode) mode.textContent = VP.reference.state.mode;
-
-    const opacity = $("reference-opacity");
-    if (opacity && document.activeElement !== opacity) {
-      opacity.value = String(Math.round(VP.reference.state.opacity * 100));
-    }
-    const opacityReadout = $("reference-opacity-value");
-    if (opacityReadout) opacityReadout.textContent = Math.round(VP.reference.state.opacity * 100) + "%";
-
-    const fit = $("reference-fit");
-    if (fit) fit.textContent = VP.reference.state.fit;
   }
 
   function renderBottomBar() {
@@ -386,9 +290,7 @@
   }
 
   function doResize(width, height) {
-    state.history.push(snapshot());
     VP.canvas.resize(width, height);
-    state.history.setDepth(VP.history.depthFor(width, height));
     /* The zoom follows the canvas. A 256px canvas at the 16x it inherited
        from a 32px one is 4096 CSS pixels across — three times the pane.
        The current zoom is kept if the canvas still fits; otherwise it
@@ -398,10 +300,8 @@
        shape. It re-fits itself and the photo is re-centred on it —
        otherwise the grid keeps the cell size it had, grows off the bottom
        of the pane, and half of what is converted is out of sight. */
-    if (VP.workspace.isOpen()) {
-      VP.workspace.updateCellSize(true);
-      VP.workspace.recentreSource();
-    }
+    VP.workspace.updateCellSize(true);
+    VP.workspace.recentreSource();
     autosave();
     renderAll();
   }
@@ -462,16 +362,6 @@
       });
     }
 
-    const symmetry = $("symmetry-toggle");
-    if (symmetry) {
-      symmetry.addEventListener("click", () => {
-        const mode = (VP.canvas.state.symmetry + 1) % 4;
-        VP.canvas.setSymmetry(mode);
-        autosave();
-        renderAll();
-      });
-    }
-
     /* The canvas's own zoom slider. The source pane has its own, and
        neither one moves the other. */
     const zoomSlider = $("canvas-zoom");
@@ -496,31 +386,6 @@
         VP.canvas.setGridVisible(!VP.canvas.state.gridVisible);
         autosave();
         renderAll();
-      });
-    }
-
-    const undoButton = $("undo");
-    if (undoButton) undoButton.addEventListener("click", undo);
-    const redoButton = $("redo");
-    if (redoButton) redoButton.addEventListener("click", redo);
-
-    const workspaceToggle = $("workspace-toggle");
-    if (workspaceToggle) {
-      workspaceToggle.addEventListener("click", () => {
-        VP.workspace.toggle();
-        renderAll();
-      });
-    }
-
-    const newButton = $("new-canvas");
-    if (newButton) {
-      newButton.addEventListener("click", () => {
-        armConfirm(newButton, () => {
-          state.history.push(snapshot());
-          VP.canvas.clearGrid();
-          autosave();
-          renderAll();
-        });
       });
     }
 
@@ -673,60 +538,18 @@
           openFilePicker("file-image");
           return;
         }
-        if (!VP.workspace.isOpen()) VP.workspace.open();
         VP.workspace.extract();
         renderAll();
       });
     }
   }
 
-  /* --- the reference strip ----------------------------------------------------------- */
+  /* --- the source pane ------------------------------------------------------------------ */
 
-  function bindReferenceStrip() {
-    const load = $("reference-load");
-    if (load) load.addEventListener("click", () => openFilePicker("file-image"));
-
-    /* The empty state in the workspace is the other obvious place to click. */
+  function bindSourcePane() {
+    /* The empty state in the source pane is the other obvious place to click. */
     const sourceLoad = $("ws-source-load");
     if (sourceLoad) sourceLoad.addEventListener("click", () => openFilePicker("file-image"));
-
-    const mode = $("reference-mode");
-    if (mode) {
-      mode.addEventListener("click", () => {
-        VP.reference.cycleMode();
-        autosave();
-        renderAll();
-      });
-    }
-
-    const opacity = $("reference-opacity");
-    if (opacity) {
-      opacity.addEventListener("input", () => {
-        VP.reference.setOpacity(parseInt(opacity.value, 10) / 100);
-        autosave();
-        renderReferenceStrip();
-      });
-      VP.workspace.attachReset(opacity, "the reference opacity");
-    }
-
-    const fit = $("reference-fit");
-    if (fit) {
-      fit.addEventListener("click", () => {
-        VP.reference.cycleFit();
-        autosave();
-        renderAll();
-      });
-    }
-
-    const clear = $("reference-clear");
-    if (clear) {
-      clear.addEventListener("click", () => {
-        VP.reference.clear();
-        autosave();
-        renderAll();
-        if (VP.workspace.isOpen()) VP.workspace.refresh();
-      });
-    }
   }
 
   /* --- the bottom bar ------------------------------------------------------------------ */
@@ -828,15 +651,6 @@
     if (importJson) {
       importJson.addEventListener("click", () => openFilePicker("file-json"));
     }
-    const importPng = $("import-png");
-    if (importPng) {
-      importPng.addEventListener("click", () => openFilePicker("file-png"));
-    }
-    const importReference = $("import-reference");
-    if (importReference) {
-      importReference.addEventListener("click", () => openFilePicker("file-image"));
-    }
-
     const adopt = $("import-adopt");
     if (adopt) {
       adopt.addEventListener("click", () => {
@@ -907,13 +721,6 @@
       });
     }
 
-    const png = $("file-png");
-    if (png) {
-      png.addEventListener("change", () => {
-        const file = png.files && png.files[0];
-        if (file) importPngFile(file);
-      });
-    }
   }
 
   /* --- the alert bar ----------------------------------------------------------- */
@@ -951,14 +758,9 @@
       .load(file, file.name, file.type)
       .then(() => {
         VP.storage.savePhoto(file, file.name, file.type);
-        /* A freshly loaded photo that stays switched off is invisible: the
-           user loads an image, nothing appears on the canvas, and it looks
-           as though the upload did nothing. So a new image switches the
-           reference on — the user can still turn it off deliberately. */
-        if (VP.reference.mode === "off") VP.reference.setMode("under");
-        if (VP.workspace.isOpen()) {
-          VP.workspace.open();
-        }
+        /* A freshly loaded photo has to appear somewhere the user is
+           looking. The source pane is the only view there is. */
+        VP.workspace.fitSource();
         clearError();
         autosave();
         renderAll();
@@ -985,7 +787,6 @@
       if (state.importMode === "adopt") {
         /* The file's palette replaces the current one, and the indices map
            1:1. Exact and lossless. */
-        state.history.push(snapshot());
         VP.canvas.resize(result.width, result.height);
         const grid = new Int8Array(result.width * result.height);
         for (let row = 0; row < result.height; row += 1) {
@@ -998,7 +799,6 @@
       } else {
         /* Remap: every colour in the file snaps to the nearest colour in the
            current palette. */
-        state.history.push(snapshot());
         VP.canvas.resize(result.width, result.height);
         const grid = new Int8Array(result.width * result.height);
         for (let row = 0; row < result.height; row += 1) {
@@ -1018,67 +818,6 @@
      colour. */
   function applyPalette(colours) {
     VP.palette.adopt(colours);
-  }
-
-  function importPngFile(file) {
-    const error = $("import-error");
-    VP.io.readImageData(file).then((imageData) => {
-      const allowed = Q.ALLOWED_SIZES;
-      const nearest = (value) =>
-        allowed.reduce((best, candidate) =>
-          Math.abs(candidate - value) < Math.abs(best - value) ? candidate : best
-        );
-      const width = nearest(imageData.width);
-      const height = nearest(imageData.height);
-
-      if (imageData.width !== width || imageData.height !== height) {
-        const panel = $("import-panel");
-        if (panel) panel.hidden = false;
-        if (error) {
-          error.textContent =
-            "That image is " +
-            imageData.width +
-            "×" +
-            imageData.height +
-            ". Scale it to " +
-            width +
-            "×" +
-            height +
-            ", or crop from the top-left?";
-        }
-        const scaleChoice = $("import-scale");
-        const cropChoice = $("import-crop");
-        if (scaleChoice) scaleChoice.hidden = false;
-        if (cropChoice) cropChoice.hidden = false;
-
-        const finish = (mode) => {
-          const scaled =
-            mode === "crop"
-              ? VP.io.cropImageData(imageData, width, height)
-              : VP.io.scaleImageData(imageData, width, height);
-          applySnap(scaled, width, height);
-          if (scaleChoice) scaleChoice.hidden = true;
-          if (cropChoice) cropChoice.hidden = true;
-        };
-
-        if (scaleChoice) scaleChoice.onclick = () => finish("scale");
-        if (cropChoice) cropChoice.onclick = () => finish("crop");
-        return;
-      }
-
-      applySnap(imageData, width, height);
-    }).catch(() => {
-      if (error) error.textContent = "that file could not be read";
-    });
-  }
-
-  function applySnap(imageData, width, height) {
-    state.history.push(snapshot());
-    VP.canvas.resize(width, height);
-    const grid = VP.io.snapToPalette(imageData, VP.palette.colours());
-    VP.canvas.setGrid(grid);
-    autosave();
-    renderAll();
   }
 
   /* --- drag and drop, and paste ------------------------------------------------------- */
@@ -1204,48 +943,18 @@
       const modifier = event.ctrlKey || event.metaKey;
       const key = event.key;
 
-      if (modifier && key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (modifier && key.toLowerCase() === "y") {
-        event.preventDefault();
-        redo();
-        return;
-      }
-      /* Every other browser shortcut is left alone. */
+      /* Every browser shortcut is left alone. There is no undo stack in a
+         pipeline — the way to change the result is to change a setting and
+         convert again. */
       if (modifier) return;
 
       switch (key) {
-        case "e":
-        case "E": {
-          const current = VP.palette.state.activeIndex;
-          VP.palette.state.activeIndex = current === -1 ? 0 : -1;
-          renderAll();
-          break;
-        }
         case "g":
         case "G":
           VP.canvas.setGridVisible(!VP.canvas.state.gridVisible);
           autosave();
           renderAll();
           break;
-        case "s":
-        case "S": {
-          const mode = (VP.canvas.state.symmetry + 1) % 4;
-          VP.canvas.setSymmetry(mode);
-          autosave();
-          renderAll();
-          break;
-        }
-        case "r":
-        case "R": {
-          const button = $("new-canvas");
-          if (button) button.click();
-          break;
-        }
         case "+":
         case "=":
           if (sourceFocused()) VP.workspace.zoomBy(1.25);
@@ -1275,41 +984,12 @@
         case "I":
           openFilePicker("file-image");
           break;
-        case "m":
-        case "M":
-          VP.reference.cycleMode();
-          autosave();
-          renderAll();
-          break;
-        case ",":
-          VP.reference.setOpacity(VP.reference.state.opacity - 0.1);
-          autosave();
-          renderReferenceStrip();
-          break;
-        case ".":
-          VP.reference.setOpacity(VP.reference.state.opacity + 0.1);
-          autosave();
-          renderReferenceStrip();
-          break;
-        case "f":
-        case "F":
-          VP.reference.cycleFit();
-          autosave();
-          renderAll();
-          break;
-        case "w":
-        case "W":
-          VP.workspace.toggle();
-          renderAll();
-          break;
         case "l":
         case "L":
-          if (VP.workspace.isOpen()) {
-            VP.reference.autoLevels();
-            VP.workspace.updateAdjustReadouts();
-            VP.workspace.invalidate();
-            VP.workspace.commitPreview();
-          }
+          VP.reference.autoLevels();
+          VP.workspace.updateAdjustReadouts();
+          VP.workspace.invalidate();
+          VP.workspace.commitPreview();
           break;
         case "x":
         case "X": {
@@ -1325,7 +1005,6 @@
         case "ArrowRight":
         case "ArrowUp":
         case "ArrowDown": {
-          if (!VP.workspace.isOpen()) return;
           event.preventDefault();
           const step = event.shiftKey ? 32 : 8;
           const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
@@ -1338,10 +1017,7 @@
             for (const node of ARMED.slice()) disarmConfirm(node);
             break;
           }
-          if (VP.workspace.isOpen()) {
-            VP.workspace.close();
-            renderAll();
-          } else if (VP.palette.state.activeIndex === -1) {
+          if (VP.palette.state.activeIndex === -1) {
             VP.palette.setActiveIndex(0);
             renderAll();
           } else {
@@ -1379,7 +1055,6 @@
     VP.canvas.hooks.scale = () => syncCanvasZoom();
     VP.canvas.state.gridVisible =
       state.prefs.gridVisible === undefined ? true : !!state.prefs.gridVisible;
-    VP.canvas.setSymmetry(state.prefs.symmetry || 0);
 
     if (storedCanvas) {
       VP.canvas.resize(storedCanvas.width, storedCanvas.height);
@@ -1389,18 +1064,10 @@
     state.sizeLocked =
       state.prefs.sizeLocked === undefined ? true : !!state.prefs.sizeLocked;
 
-    state.history = VP.history.create(
-      VP.history.depthFor(VP.canvas.state.width, VP.canvas.state.height)
-    );
-
-    /* The reference layer's own settings. */
-    VP.reference.state.mode = state.prefs.refMode || "off";
-    VP.reference.state.opacity =
-      state.prefs.refOpacity === undefined ? 0.5 : state.prefs.refOpacity;
-    VP.reference.state.fit = state.prefs.refFit || "cover";
+    /* The source layer's own settings. */
     VP.reference.state.onChange = () => {
       renderAll();
-      if (VP.workspace.isOpen()) VP.workspace.refresh();
+      VP.workspace.refresh();
     };
 
     VP.menu.init();
@@ -1410,7 +1077,6 @@
     VP.workspace.state.panY = state.prefs.srcPanY || 0;
     VP.workspace.state.zoom = state.prefs.srcZoom || 1;
     VP.workspace.onConvert = (result, width, height) => {
-      state.history.push(snapshot());
       if (
         width !== VP.canvas.state.width ||
         height !== VP.canvas.state.height
@@ -1419,14 +1085,13 @@
       }
       VP.canvas.setGrid(result);
       VP.canvas.clearPreview();
-      state.history.setDepth(VP.history.depthFor(width, height));
       autosave();
       renderAll();
     };
 
     bindTopBar();
     bindSidebar();
-    bindReferenceStrip();
+    bindSourcePane();
     bindBottomBar();
     bindFileInputs();
     bindDragAndDrop();
@@ -1473,7 +1138,7 @@
     root.addEventListener("pagehide", saveNow);
 
     root.addEventListener("resize", () => {
-      if (VP.workspace.isOpen()) VP.workspace.resizeCanvases();
+      VP.workspace.resizeCanvases();
       if (state.prefs.fitZoom) {
         VP.canvas.setScale(VP.canvas.fitScale());
       } else {

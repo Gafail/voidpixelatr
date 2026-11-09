@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VoidPixlr — serve the site with the real shared security headers.
+"""VoidPixelatr — serve the site with the real shared security headers.
 
 The browser suites normally run against `python3 -m http.server`, which
 sends no Content-Security-Policy at all. That is a weaker test than it
@@ -11,11 +11,11 @@ This server sends exactly the headers in the umbrella's shared snippet
 rather than transcribed, so it cannot drift from what nginx will send. If
 the snippet changes, this changes with it.
 
-    python3 tests/browser/csp_server.py [--port 8791] [--root <dir>]
+    python3 tests/browser/csp_server.py [--port 8793] [--root <dir>]
 
 Then point a suite at it:
 
-    python3 tests/browser/e2e.py --base http://127.0.0.1:8791
+    python3 tests/browser/e2e.py --base http://127.0.0.1:8793
 
 The app has no inline <script> and no inline event handlers, so
 `script-src 'self'` is enough. If the server ever reports a CSP violation
@@ -77,7 +77,7 @@ def parse_headers(snippet: Path) -> dict[str, str]:
 class CSPRequestHandler(http.server.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler plus the shared security headers."""
 
-    server_version = "voidpixlr-csp-test"
+    server_version = "voidpixelatr-csp-test"
 
     def end_headers(self) -> None:
         for name, value in self.server.security_headers.items():  # type: ignore[attr-defined]
@@ -92,7 +92,7 @@ class CSPRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=8791)
+    parser.add_argument("--port", type=int, default=8793)
     parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--root", default=str(PROJECT_ROOT))
     parser.add_argument("--quiet", action="store_true")

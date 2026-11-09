@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""VoidPixlr — a diagnostic sweep for the reported UI problems.
+"""VoidPixelatr — a diagnostic sweep for the reported UI problems.
 
 Not a test suite; a measuring instrument. It reports what it finds and
 exits 0 either way, so it can be run to see the shape of a problem before
 deciding how to fix it.
 
-    python3 tests/browser/diagnose.py [--base http://127.0.0.1:8790]
+    python3 tests/browser/diagnose.py [--base http://127.0.0.1:8792]
 
 It measures:
 
     1. overlapping text — text-bearing elements whose boxes intersect
     2. clipped text — an element whose content is wider than its box
     3. the default zoom after a canvas size change
-    4. whether a real image file actually loads
+    4. whether the grid fits the source pane
+    5. whether a real photo actually loads
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -29,14 +29,13 @@ sys.path.insert(0, str(HERE))
 
 from marionette import Marionette  # noqa: E402
 
-ROOT = HERE.parent.parent
 IMAGES = Path("/tmp/vp-images")
 
 # Every element that renders text the user needs to read.
 TEXT_SELECTOR = """
-  .wordmark, .btn, .readout, .strip-name, .strip-label, .never,
-  .panel-label, .panel-error, .side-label, .side-note, .accent-note,
-  .ws-title, .ws-note, .pane-label, .pane-empty, .check, .notfound-title,
+  .wordmark, .btn, .readout, .group-label, .side-label, .side-note,
+  .accent-note, .panel-label, .panel-error, .pane-label, .pane-hint,
+  .menu-head-label, .menu-head-meta, .alert-text, .ws-note, .notfound-title,
   .notfound-text, .notfound-code, .notfound-note, .select, .text-input
 """
 
@@ -96,10 +95,10 @@ for (let i = 0; i < boxes.length; i++) {
   for (let j = i + 1; j < boxes.length; j++) {
     const a = boxes[i], b = boxes[j];
     if (a.x + a.w <= b.x || b.x + b.w <= a.x) continue;
-    if (a.y + a.h <= b.y || b.y + b.h <= a.y) continue;
+    if (a.y + a.h <= b.y || b.y + a.h <= a.y) continue;
     // Ignore a box entirely inside another (a button inside a labelled row).
     const inside = (a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h)
-                || (b.x >= a.x && b.y >= a.y && b.x + b.w <= a.x + a.w && b.y + b.h <= a.y + a.h);
+                || (b.x >= a.x && b.y >= a.y && b.x + b.w <= a.x + a.w && b.y + a.h <= a.y + b.h);
     if (inside) continue;
     const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
     const oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
@@ -135,7 +134,7 @@ def report(title: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://127.0.0.1:8790")
+    parser.add_argument("--base", default="http://127.0.0.1:8792")
     parser.add_argument("--width", type=int, default=1500)
     parser.add_argument("--height", type=int, default=950)
     args = parser.parse_args()
@@ -205,9 +204,7 @@ def main() -> int:
 
         # --- a rectangular canvas ---
         report("a rectangular canvas")
-        firefox.execute_script(
-            "document.getElementById('size-lock').click();"
-        )
+        firefox.execute_script("document.getElementById('size-lock').click();")
         time.sleep(0.3)
         firefox.execute_script(
             "const x = document.getElementById('size-x');"
@@ -241,8 +238,6 @@ def main() -> int:
         report("the grid over the photo")
         firefox.navigate(f"{args.base}/")
         time.sleep(0.7)
-        firefox.execute_script("document.getElementById('workspace-toggle').click();")
-        time.sleep(0.5)
         photo = IMAGES / "test-photo.png"
         firefox.set_file_input("#file-image", str(photo))
         firefox.execute_script(
@@ -252,7 +247,7 @@ def main() -> int:
         for size in (16, 32, 64, 128, 256, 512):
             firefox.execute_script(
                 f"VP.canvas.resize({size}, {size});"
-                "VP.workspace.updateCellSize();"
+                "VP.workspace.updateCellSize(true);"
                 "VP.workspace.fitGrid();"
             )
             time.sleep(0.3)
@@ -275,45 +270,38 @@ def main() -> int:
             print(f"  {size:>4}×{size:<4} cell {info['cell']:>3}px  grid {info['gw']:>4}×{info['gh']:<4}"
                   f"  pane {info['pw']:>4}×{info['ph']:<4}  → {verdict}")
 
-        # --- the image upload ---
-        report("loading a real image file")
+        # --- the source pane ---
+        report("the source pane")
         firefox.navigate(f"{args.base}/")
         time.sleep(0.7)
-        photo = IMAGES / "test-photo.png"
-        firefox.set_file_input("#file-image", str(photo))
-        firefox.execute_script(
-            "document.getElementById('file-image').dispatchEvent(new Event('change', {bubbles: true}));"
-        )
-        time.sleep(1.2)
-        state = firefox.execute_script(
-            "return {has: VP.reference.hasImage(),"
-            " strip: getComputedStyle(document.getElementById('reference-strip')).display,"
-            " name: document.getElementById('reference-name').textContent,"
-            " errors: (window.__vpErrors || []).slice(0, 3)};"
-        )
-        print(f"  reference loaded : {state['has']}")
-        print(f"  strip display    : {state['strip']}")
-        print(f"  strip name       : {state['name']!r}")
-        if state["errors"]:
-            print(f"  errors           : {state['errors']}")
-
-        # And the workspace path — the one the pipeline actually uses.
-        print("\n  and the workspace path:")
-        firefox.execute_script("document.getElementById('workspace-toggle').click();")
-        time.sleep(0.5)
         firefox.set_file_input("#file-image", str(photo))
         firefox.execute_script(
             "document.getElementById('file-image').dispatchEvent(new Event('change', {bubbles: true}));"
         )
         time.sleep(1.5)
-        ws = firefox.execute_script(
-            "return {has: VP.reference.hasImage(),"
-            " empty: getComputedStyle(document.getElementById('ws-source-empty')).display,"
-            " note: document.getElementById('ws-load-note').textContent.slice(0, 80)};"
+        state = firefox.execute_script(
+            """
+            const c = document.getElementById('source-pane');
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            let coloured = 0;
+            for (let i = 0; i < d.length; i += 4) {
+              if (d[i] !== d[i+1]) coloured += 1;
+            }
+            return {
+              loaded: VP.reference.hasImage(),
+              name: VP.reference.state.source ? VP.reference.state.source.name : null,
+              sized: [c.clientWidth, c.clientHeight],
+              coloured: coloured,
+              errors: (window.__vpErrors || []).slice(0, 3),
+            };
+            """
         )
-        print(f"  reference loaded : {ws['has']}")
-        print(f"  empty message    : {ws['empty']}")
-        print(f"  load note        : {ws['note']!r}")
+        print(f"  loaded        : {state['loaded']}")
+        print(f"  name          : {state['name']!r}")
+        print(f"  pane          : {state['sized']}")
+        print(f"  photo pixels  : {state['coloured']}")
+        if state["errors"]:
+            print(f"  errors        : {state['errors']}")
 
     finally:
         firefox.stop()

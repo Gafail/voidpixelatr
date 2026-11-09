@@ -1,13 +1,28 @@
-# VoidPixlr — AI Handoff
+# VoidPixelatr — AI Handoff
 
-> A pixel-art canvas for 16 to 256 px art, and a photo-to-pixel-art pipeline
-> that runs entirely in the browser. Nothing is ever uploaded.
+> A photo-to-pixel-art pipeline that runs entirely in the browser. Load a
+> photo, frame it under a grid, adjust it, extract a palette, convert, export.
+> Nothing is ever uploaded.
 
-**Status:** scaffold — built and tested, not yet deployed
+**Status:** built and tested — **not deployed**, no container, no registry row
 **Domain:** none (LAN-only when it ships)
-**Brand identity:** "A pixel canvas that earns its keep." Flat rectangles, no
+**Brand identity:** "A photo becomes pixel art." Flat rectangles, no
 gradients, no rounded corners, no animations, no shadows except the canvas
 glow. Accent `#4f4fff` on `#0d0d0f`.
+
+## What this project is
+
+A **pipeline**. There is no brush, no eraser, no symmetry, no stroke undo and
+no `New`. The canvas is written by the converter and read by the exporter,
+and by nothing else.
+
+Its sibling, **VoidPixlr** (`~/Desktop/voidpixlr/`), is the hand-made
+pixel-art canvas. The two were one project and are now two. They share the
+project-file format and the colour maths; they share **nothing else** — not
+a folder, not a repository, not a byte of stored state.
+
+**Do not add drawing tools here.** If the work needs a brush, it belongs in
+VoidPixlr. That is the whole point of the split.
 
 ## Architecture
 
@@ -15,15 +30,15 @@ glow. Accent `#4f4fff` on `#0d0d0f`.
   no build step, no TypeScript, no npm, no dependencies.
 - **Backend:** none. nginx serves a directory. There is no runtime, no
   systemd unit, no database.
-- **Persistence:** `localStorage` for the artwork, the palettes and the
+- **Persistence:** `localStorage` for the result, the palettes and the
   preferences; **IndexedDB** for the photo. Both local-only, both clearable
   with one button. Nothing is ever transmitted — there is no `fetch`, no
   `XMLHttpRequest`, no `sendBeacon`, no `blob:` URL anywhere in the source.
 - **Rendering:** a layered buffer model, not DOM nodes. `artBuffer` and
-  `refBuffer` are offscreen canvases at art resolution; the visible canvas
-  composites them. 256×256 is 65 536 cells and stays responsive.
+  `previewBuffer` are offscreen canvases at art resolution; the visible
+  canvas composites them. 256×256 is 65 536 cells and stays responsive.
 - **Deploy pipeline:** `./deploy.sh` → rsync → install the vhost and the
-  shared nginx snippet → `nginx -t` → reload → smoke test.
+  shared nginx snippet → `nginx -t` → reload → smoke test. **Never run.**
 
 ## File map
 
@@ -36,27 +51,24 @@ glow. Accent `#4f4fff` on `#0d0d0f`.
 - `js/palette.js` — the palette model, the three nested built-ins, editing,
   reordering, the staging palette, the re-indexing on a palette change, and
   the hue-family classifier the balance test uses.
-- `js/history.js` — the undo and redo stacks, depth scaled by the canvas's
-  cell count.
 - `js/storage.js` — `localStorage` (three keys) and the IndexedDB photo
   store. Every write is wrapped; a quota error is swallowed.
-- `js/canvas.js` — the buffers (art, preview, reference), the compositing,
-  the pointer handling: drag-paint with Bresenham interpolation, the eraser,
-  symmetry, zoom.
+- `js/canvas.js` — the buffers (art, preview), the compositing, the zoom.
+  **No pointer handling, no symmetry, no eraser.**
 - `js/reference.js` — the source layer: loading, the working copy, the
-  adjustments, the underlay resample, the fit modes.
-- `js/io.js` — PNG and JSON export, JSON and PNG import, the clipboard with
-  its download fallback.
-- `js/workspace.js` — the Image workspace: the source pane's pan and zoom,
-  the **grid's own pan and zoom**, the adjustments, palette extraction and
+  adjustments, auto levels. **No underlay, no fit modes, no modes at all.**
+- `js/io.js` — PNG and JSON export, JSON import, the clipboard with its
+  download fallback.
+- `js/workspace.js` — the pipeline: the source pane's pan and zoom, the
+  **grid's own pan and zoom**, the adjustments, palette extraction and
   tuning, the conversion, and the two-tier live preview — which is drawn on
   the canvas, not on a second one.
 - `js/menu.js` — the menu: the sections that drop open, and the colour
   pop-over, which floats over the canvas beside the button that opened it.
 - `js/app.js` — the bootstrap: wiring, the keyboard, drag and drop, paste,
   the inline panels, the autosave.
-- `ops/nginx/voidpixlr.conf` — the vhost.
-- `tests/voidpixlr.test.mjs` — the dependency-free node tests.
+- `ops/nginx/voidpixelatr.conf` — the vhost. **Never installed.**
+- `tests/voidpixelatr.test.mjs` — the dependency-free node tests.
 - `tests/browser/marionette.py` — a minimal Marionette client: a real
   Firefox, driven with no dependencies and no geckodriver.
 - `tests/browser/e2e.py` — the end-to-end browser tests.
@@ -64,30 +76,36 @@ glow. Accent `#4f4fff` on `#0d0d0f`.
   files, storage that throws.
 - `tools/make-test-images.py` — writes the test images (stdlib only).
 - `project.md` — the specification. The single source of truth.
-- `project-v1.0.md` — the archived v1.0 specification.
+- `project-v1.0.md` — the archived VoidPixlr v1.0 specification, carried
+  across with the code.
+
+There is **no `js/history.js`**. The undo stack went with the brush.
 
 ## How to test
 
 ```bash
-node tests/voidpixlr.test.mjs          # 151 logic checks, no dependencies
+node tests/voidpixelatr.test.mjs       # 141 logic checks, no dependencies
 
 ./serve.sh                              # then, in another shell:
 python3 tools/make-test-images.py /tmp/vp-images
-python3 tests/browser/e2e.py            # 116 end-to-end checks
-python3 tests/browser/hostile.py        # 31 hostile-input checks
+python3 tests/browser/e2e.py            # 101 end-to-end checks
+python3 tests/browser/hostile.py        # 33 hostile-input checks
 ```
 
 The browser tests drive a real Firefox over Marionette. Firefox must be on
 the path; nothing else is needed.
+
+**One Firefox at a time.** Two suites running at once collide on the
+profile and die with `MarionetteError: the connection closed`.
 
 To run them under the **real shared CSP** — which is the only way to show
 the app works under `script-src 'self'` — use the CSP server instead of
 `./serve.sh`:
 
 ```bash
-python3 tests/browser/csp_server.py --port 8791 &
-python3 tests/browser/e2e.py --base http://127.0.0.1:8791
-python3 tests/browser/hostile.py --base http://127.0.0.1:8791
+python3 tests/browser/csp_server.py --port 8793 &
+python3 tests/browser/e2e.py --base http://127.0.0.1:8793
+python3 tests/browser/hostile.py --base http://127.0.0.1:8793
 ```
 
 It parses the umbrella's real `security-headers.conf`, so it cannot drift
@@ -95,7 +113,12 @@ from what nginx will send.
 
 ## How to deploy
 
-`ops/PROVISION.md` is the full checklist. The short version:
+**Not now.** There is no container, nothing is deployed, and there is no
+registry row in TheVoidCo. The scaffolding is here so the project is
+standalone and *can* be given a box when it wants one.
+
+`ops/PROVISION.md` is the full checklist for the day that happens. The short
+version:
 
 1. Provision the container (a full clone of the base template — never a
    copy of `.199`, which would carry TheVoidCo's own site). Reserve the new
@@ -109,7 +132,7 @@ from what nginx will send.
 3. `./deploy.sh <ip>` — the address is mandatory. The script refuses to run
    without one.
 4. Add the registry row to the umbrella's root `README.md`, pointing at
-   **this folder** — `~/Desktop/voidpixlr/`. The source stays here. The
+   **this folder** — `~/Desktop/voidpixelatr/`. The source stays here. The
    umbrella holds no copy of it: it is a standalone project and TheVoidCo
    only points at it. Do not rsync, copy or symlink this folder anywhere.
 5. `python3 website/scripts/sync-registry.py` then
@@ -121,12 +144,18 @@ from what nginx will send.
   app binds nothing at load time; it waits for `DOMContentLoaded`.
 - **The palette is empty** → `VP.palette.render()` throws. Check that the
   swatch grid element exists.
-- **A reference image will not load** → check the file size and dimensions
-  against `VP.reference.LIMITS`; the limits are stated on the load page.
+- **A photo will not load** → check the file size and dimensions against
+  `VP.reference.LIMITS`; the limits are stated on the load page.
 - **The picture is dim or muddy** → the source adjustments run *before*
   sampling. Raise the contrast before the saturation.
 - **The palette has no colours** → `VP.palette.colours()` is the staging
   palette when one exists. That is intentional.
+- **The source pane is blank but the photo loaded** → the pane's canvas was
+  never sized to its container. `VP.workspace.init()` calls
+  `W.resizeCanvases()` *before* `W.updateCellSize()`, because the cell size
+  is derived from the pane's dimensions and the pane's dimensions come from
+  the canvas being sized to it. Reverse the order and the grid is fitted to
+  a 300×150 default canvas and the photo is drawn off the bottom of it.
 - **The clipboard does nothing** → a plain `http://` LAN address is not a
   secure context. `Copy PNG` falls back to a download. That is intentional.
 
@@ -137,27 +166,23 @@ from what nginx will send.
   at once.
 - **The `hidden` attribute loses to `display: flex`.** The stylesheet has a
   global `[hidden] { display: none !important }` for exactly this reason.
-- **`VP.reference.mode` and `VP.reference.state.mode` are the same thing.**
+- **`VP.reference.adjust` and `VP.reference.state.adjust` are the same thing.**
   The module exposes its state as properties, so the two spellings cannot
   drift. Do the same for any new module state.
 - **The reduced copy and the full copy are not the same thing.** While a
   control is moving only the reduced copy of the photo is updated; the
-  full-resolution copy keeps the last *settled* value, so the underlay does
-  not flicker. Anything that renders from the full copy must first call
+  full-resolution copy keeps the last *settled* value, so the pane does not
+  flicker. Anything that renders from the full copy must first call
   `VP.reference.commitAdjust()`, or it will show a stale value — this is
   what made the preview snap back and the source pane look frozen.
 - **Transform the palette from the original, never from the last result.**
   `VP.palette.transformStaged()` always starts from `stagedSource`. Doing
   it otherwise compounds: every slider move applies on top of the previous
   one and the colours never come back.
-- **A palette change has to reach the workspace.** `renderAll()` redraws
-  the sidebar and the bars, but the workspace's live preview is made *of*
-  the palette. Without `VP.workspace.refresh()` in `renderAll()`, switching
-  the palette leaves the preview showing the old palette's result.
-- **A control inside a hidden container is invisible.** The `Load…` button
-  lived in the reference strip, and the strip is hidden until a photo is
-  loaded — so before the first load there was nothing on screen to click.
-  The always-visible one is in the top bar (`load-photo`).
+- **A palette change has to reach the pipeline.** `renderAll()` redraws the
+  menu and the bars, but the live preview is made *of* the palette. Without
+  `VP.workspace.refresh()` in `renderAll()`, switching the palette leaves
+  the preview showing the old palette's result.
 - **The whole page takes a dropped photo.** The drop handler is on the
   document, not on two boxes: the old per-target handlers had to go
   because the drop event bubbles, and leaving them would load the image
@@ -168,9 +193,9 @@ from what nginx will send.
   what is outside. A `position: fixed` element escapes its DOM ancestors'
   overflow, so it is *not* clipped by them.
 - **Never expire an armed confirmation on a timer.** `armConfirm` waits for
-  a second click, a click elsewhere, or Escape. A timeout turned "New" into
-  a trap — click, pause, click again, and the second click armed it a
-  second time instead of confirming it.
+  a second click, a click elsewhere, or Escape. A timeout turned the
+  confirmation into a trap — click, pause, click again, and the second click
+  armed it a second time instead of confirming it.
 - **Never call `URL.createObjectURL`.** The shared CSP's `img-src` has no
   `blob:`, and the no-upload guarantee rules it out by name. Downloads go
   out as `data:` URLs.
@@ -194,56 +219,26 @@ from what nginx will send.
   that could make it smaller. `Fit` fits the whole grid in the pane.
 - **`VP.canvas.grid` is a getter onto `VP.canvas.state.grid`.** It was a
   real bug when it did not exist: every palette switch threw.
-- **The vhost's address is the placeholder `192.0.2.0`.** That is the RFC
-  5737 documentation range, so a checked-in config can never name a live
-  machine. `deploy.sh` substitutes the real address at install time and
-  refuses to run without one. Do not "fix" it by hard-coding a LAN address:
-  `192.168.100.200` is already occupied by an unrelated device.
-- **The cloned template's own site must be disabled before ours is
-  enabled.** Both are `listen 80 default_server`, and nginx refuses to
-  start with two of them: `a duplicate default server for 0.0.0.0:80`.
-  `deploy.sh` removes the other links in `sites-enabled`; the files stay in
-  `sites-available`.
-- **There is one deploy key for all of TheVoidCo.**
-  `ops/keys/thevoidco-lxc-id_ed25519`, inherited by every clone. A
-  per-project key would never be installed on the container and would break
-  the house rule.
-- **The browser suites' error probe must be a file, not an inline
-  `<script>`.** The shared CSP is `script-src 'self'`, which blocks inline
-  scripts. An inline probe never installs, `window.__vpErrors` stays
-  `undefined`, and every "no JavaScript errors" check reads an empty array
-  and passes — green, and blind. It lives in `tests/browser/probe.py` and is
-  loaded with `src`; both suites assert `probe.is_installed()` first, so it
-  cannot go quietly blind again.
-
-- **The underlay lives in a buffer at the canvas's size, so a resize wipes
-  it.** `C.resize()` makes a new reference buffer, and nothing resampled the
-  photo into it — the reference simply vanished on every resize. The resize
-  now resamples. The resample used the buffer's *width* for both axes, so a
-  rectangle squashed the photo; it uses the width and the height now.
-- **A second size change must build on the *pending* size.** Set X to 64,
-  then Y to 32: the panel has to say "64 × 32". Reading the canvas's
-  current size instead threw the first change away — the panel said
-  "16 × 32" and the 64 was lost.
 - **The canvas is not square, and `size` is gone.** `VP.canvas.state.width`
   and `.height` are the two edges; the grid's row stride is the **width**.
-  Every buffer, export, autosave and undo snapshot carries both. A snapshot
-  is `{ width, height, grid }`, not `{ size, grid }`.
+  Every buffer, export and autosave carries both.
 - **The X and Y dropdowns are dropdowns, not free text.** They are filled
   from `Q.ALLOWED_SIZES` — 16, 32, 64, 128, 256, 512 — so the canvas is
   always one of the allowed sizes. The lock button ties them together;
   locked, changing either sets both.
-- **There is one art canvas.** The workspace's live conversion is a
-  **layer over the artwork** (`VP.canvas.setPreview`), drawn in the same
-  canvas the Draw mode paints in. There is no `#preview-pane` any more.
-  The workspace converts into the canvas's own size — it has no size of its
-  own, and `state.convertSize` is gone.
+- **A second size change must build on the *pending* size.** Set X to 64,
+  then Y to 32: the panel has to say "64 × 32". Reading the canvas's
+  current size instead threw the first change away — the panel said
+  "16 × 32" and the 64 was lost.
+- **There is one art canvas.** The pipeline's live conversion is a
+  **layer over the result** (`VP.canvas.setPreview`), drawn in the same
+  canvas the result lives in. There is no `#preview-pane` any more.
 - **Each pane zooms on its own.** The source's zoom is
   `VP.workspace.state.zoom`; the canvas's is `VP.canvas.state.scale`.
   Neither writes to the other, and the canvas's scale is an integer from
   1 to 64 — the slider maps to it logarithmically. The grid has a third
   zoom of its own: `state.cellPx`, from 1 to 64.
-- **There is one menu, on the left.** The palette and the Image mode's
+- **There is one menu, on the left.** The palette and the pipeline's
   controls were two columns, both permanently open. Now they are five
   sections of one menu — Palette, Colours, Adjust, Extract, Convert —
   each a header that opens a body. The centre holds the photo and the
@@ -264,33 +259,56 @@ from what nginx will send.
 - **The spec's palette tables are checked against the code.** A node test
   reads `project.md` and `js/palette.js` and compares them. Change one and
   you must change the other.
+- **The storage namespace is `voidpixelatr:*`.** VoidPixlr keeps
+  `voidpixlr:*`. The two apps are served from the same origin during local
+  development, so they must not share a key — one would read the other's
+  work. The *project-file format* is shared; the *stored* state is not.
+- **The browser suites' error probe must be a file, not an inline
+  `<script>`.** The shared CSP is `script-src 'self'`, which blocks inline
+  scripts. An inline probe never installs, `window.__vpErrors` stays
+  `undefined`, and every "no JavaScript errors" check reads an empty array
+  and passes — green, and blind. It lives in `tests/browser/probe.py` and is
+  loaded with `src`; both suites assert `probe.is_installed()` first, so it
+  cannot go quietly blind again.
+- **The vhost's address is the placeholder `192.0.2.0`.** That is the RFC
+  5737 documentation range, so a checked-in config can never name a live
+  machine. `deploy.sh` substitutes the real address at install time and
+  refuses to run without one. Do not "fix" it by hard-coding a LAN address:
+  `192.168.100.200` is already occupied by an unrelated device, and
+  `192.168.100.100` is VoidPixlr's.
+- **The cloned template's own site must be disabled before ours is
+  enabled.** Both are `listen 80 default_server`, and nginx refuses to
+  start with two of them: `a duplicate default server for 0.0.0.0:80`.
+  `deploy.sh` removes the other links in `sites-enabled`; the files stay in
+  `sites-available`.
+- **There is one deploy key for all of TheVoidCo.**
+  `ops/keys/thevoidco-lxc-id_ed25519`, inherited by every clone. A
+  per-project key would never be installed on the container and would break
+  the house rule.
 
 ## Brand identity
 
-- Name: **VoidPixlr** (lowercase `voidpixlr` for the folder and the
-  registry row).
-- Tagline: "A pixel canvas that earns its keep."
+- Name: **VoidPixelatr** (lowercase `voidpixelatr` for the folder).
+- Tagline: "A photo becomes pixel art."
 - Voice: plain, short, unhurried. No exclamation marks, no emoji, no
   marketing.
 - Colour: `#0d0d0f` background, `#e8e8ea` text, `#4f4fff` accent.
 
 ## Live operations state
 
-- **Canonical home: `~/Desktop/voidpixlr/`.** This folder is the project. It
-  is its own git repository, with the remote `Gafail/VoidPixlr` as a **backup**
-  (no Pages, no CI, no hosting). TheVoidCo does **not** hold a copy of this
-  source — it keeps a registry row pointing here, plus the shared `ops/`
-  infrastructure for the container. Never copy or symlink this folder into
-  another repository; a duplicate copy is a second thing to forget to update,
-  and this project has already drifted once because of it.
-- Current deployed version: **v2.0 r14, live at http://192.168.100.100/**.
-- Container: **`.100`**, hostname `VoidPixlr`, a full clone of the base
-  template. Its SSH host keys were regenerated on 2026-11-08 — the clone had
-  inherited the template's identity, which `.198` still uses.
-- The box serves exactly one site: nginx and a webroot, no runtime. Node,
-  npm and the `appctl` machinery were removed, matching `.199`.
+- **Canonical home: `~/Desktop/voidpixelatr/`.** This folder is the project.
+  It is its own git repository. **It has no remote** — it is a local
+  repository with the full history, cut from VoidPixlr r14. TheVoidCo holds
+  **no copy** of this source and **no registry row** for it. Never copy or
+  symlink this folder into another repository; a duplicate copy is a second
+  thing to forget to update, and this project has already drifted once
+  because of it.
+- **Nothing is deployed.** There is no container, no vhost installed and no
+  address reserved. The container at `.100` belongs to **VoidPixlr** and
+  serves that project alone.
 - The vhost carries the placeholder `192.0.2.0` in the repository;
-  `deploy.sh` substitutes the real address when it installs it.
+  `deploy.sh` substitutes the real address when it installs it — the day
+  there is something to install it on.
 - The house rule this project breaks, on purpose: **no storage on the
-  site**. The user's photos, palettes and artwork live on their own
+  site**. The user's photos, palettes and results live on their own
   machine, and one button forgets all of it. See §9.4 of `project.md`.

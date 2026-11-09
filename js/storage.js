@@ -1,5 +1,5 @@
 /* ==========================================================================
-   VoidPixlr — storage.js
+   VoidPixelatr — storage.js
    --------------------------------------------------------------------------
    Local persistence. Nothing here ever talks to a server: the only stores
    touched are `localStorage` (the artwork, the palettes and the preferences)
@@ -8,9 +8,13 @@
 
    Three localStorage keys, exactly as specified:
 
-       voidpixlr:canvas:v2    { width, height, palette, grid }
-       voidpixlr:palettes:v2  [ { name, colours } ]
-       voidpixlr:prefs:v2     { zoom, gridVisible, symmetry, activePalette, ... }
+       voidpixelatr:canvas:v2    { width, height, palette, grid }
+       voidpixelatr:palettes:v2  [ { name, colours } ]
+       voidpixelatr:prefs:v2     { zoom, gridVisible, activePalette, ... }
+
+   The namespace is this project's own. VoidPixlr keeps `voidpixlr:*`, and
+   the two apps are served from the same origin during local development, so
+   they must not share a key — one would read the other's artwork.
 
    Every write is wrapped: a quota error or a private-mode browser must never
    take the app down. Persistence is a convenience, never a dependency.
@@ -24,12 +28,12 @@
   const S = (VP.storage = {});
 
   const KEYS = {
-    canvas: "voidpixlr:canvas:v2",
-    palettes: "voidpixlr:palettes:v2",
-    prefs: "voidpixlr:prefs:v2",
+    canvas: "voidpixelatr:canvas:v2",
+    palettes: "voidpixelatr:palettes:v2",
+    prefs: "voidpixelatr:prefs:v2",
   };
 
-  const DB_NAME = "voidpixlr";
+  const DB_NAME = "voidpixelatr";
   const DB_STORE = "source";
   const DB_KEY = "photo";
 

@@ -1,9 +1,10 @@
 /* ==========================================================================
-   VoidPixlr — workspace.js
+   VoidPixelatr — workspace.js
    --------------------------------------------------------------------------
-   The Image workspace: a mode, not a modal. It adds the SOURCE block beside
-   the canvas, and the canvas itself becomes the live result — there is no
-   second art canvas and no second grid.
+   The pipeline. It is not a mode and there is nothing to switch off: the
+   SOURCE pane sits beside the canvas from the first load, and the canvas
+   itself becomes the live result — there is no second art canvas and no
+   second grid.
 
    The framing is pan and zoom under a fixed, screen-anchored grid overlay.
    There is no crop. The grid decides what will be converted; the framing
@@ -49,7 +50,6 @@
      writes to the other, and the grid is what decides which part of the
      photo is converted. */
   const state = {
-    open: false,
     panX: 0,
     panY: 0,
     zoom: 1,
@@ -84,7 +84,7 @@
   const el = {};
 
   function grab() {
-    el.workspace = document.getElementById("menu-image");
+    el.workspace = document.getElementById("menu-pipeline");
     el.foot = document.getElementById("menu-foot");
     el.source = document.getElementById("source-pane");
     el.sourcePane = document.getElementById("ws-source-pane");
@@ -101,44 +101,6 @@
     el.targetSize = document.getElementById("ws-target-size");
     el.convertSummary = document.getElementById("convert-summary");
   }
-
-  /* --- opening and closing ------------------------------------------------------ */
-
-  W.open = function open() {
-    state.open = true;
-    if (el.workspace) el.workspace.hidden = false;
-    if (el.foot) el.foot.hidden = false;
-    if (el.sourcePane) el.sourcePane.hidden = false;
-    W.resizeCanvases();
-    W.updateCellSize();
-    W.fitSource();
-    /* The canvas just lost half its room. */
-    if (VP.app && VP.app.onLayoutChange) VP.app.onLayoutChange();
-    W.refresh();
-  };
-
-  W.close = function close() {
-    state.open = false;
-    if (el.workspace) el.workspace.hidden = true;
-    if (el.foot) el.foot.hidden = true;
-    if (el.sourcePane) el.sourcePane.hidden = true;
-    /* The live conversion belongs to the Image mode. Closing it takes the
-       preview off the canvas, so the Draw mode shows the artwork and only
-       the artwork. */
-    VP.canvas.clearPreview();
-    if (VP.app && VP.app.onLayoutChange) VP.app.onLayoutChange();
-    VP.canvas.composite();
-  };
-
-  W.toggle = function toggle() {
-    if (state.open) W.close();
-    else W.open();
-    return state.open;
-  };
-
-  W.isOpen = function isOpen() {
-    return state.open;
-  };
 
   /* --- the panes ------------------------------------------------------------------ */
 
@@ -871,9 +833,21 @@
 
   W.init = function init() {
     grab();
+    /* The pane has to be sized to its container before the grid is fitted
+       to it — the cell size is derived from the pane's dimensions, and the
+       pane's dimensions come from the canvas being sized to it. */
+    W.resizeCanvases();
     W.updateCellSize();
     bindSourcePane();
     bindControls();
+    W.fitSource();
+    W.refresh();
+  };
+
+  /* The workspace is not a mode: it is the app. This stays here so the rest
+     of the code can ask the question without caring about the answer. */
+  W.isOpen = function isOpen() {
+    return true;
   };
 
   function bindSourcePane() {

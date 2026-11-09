@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VoidPixlr — the hostile pass.
+"""VoidPixelatr — the hostile pass.
 
 Everything here is something that should not work: a file that is not an
 image, a PNG that is not a PNG, a project file that lies about its size, a
@@ -7,7 +7,7 @@ palette that references a colour that does not exist, storage that throws.
 The app must survive all of it, say something sensible, and never lose the
 artwork that is already on the canvas.
 
-    python3 tests/browser/hostile.py [--base http://127.0.0.1:8790]
+    python3 tests/browser/hostile.py [--base http://127.0.0.1:8792]
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def section(title: str) -> None:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://127.0.0.1:8790")
+    parser.add_argument("--base", default="http://127.0.0.1:8792")
     args = parser.parse_args(argv[1:])
 
     # The error listener is a separate file, not an inline <script>: the
@@ -181,19 +181,16 @@ def run(fx: Marionette, base: str) -> None:
     errors = probe.errors(fx)
     check("bad project files raise nothing", not errors, "; ".join(errors))
 
-    section("the workspace with no image")
-    fx.execute_script("VP.workspace.toggle();")
-    time.sleep(0.4)
+    section("the pipeline with no image")
     extracted = fx.execute_script("return VP.workspace.extract();")
     check("Extract with no image returns nothing", extracted is None, str(extracted))
     converted = fx.execute_script("return VP.workspace.convert();")
     check("Convert with no image returns false", converted is False, str(converted))
     status = fx.execute_script("return document.getElementById('ws-status').textContent;")
-    check("the workspace says so", "image" in status.lower(), status)
+    check("the pipeline says so", "image" in status.lower(), status)
 
     errors = probe.errors(fx)
-    check("the empty workspace raises nothing", not errors, "; ".join(errors))
-    fx.execute_script("VP.workspace.toggle();")
+    check("the empty pipeline raises nothing", not errors, "; ".join(errors))
 
     section("storage that throws")
     result = fx.execute_script(
@@ -220,11 +217,15 @@ def run(fx: Marionette, base: str) -> None:
     check("a full quota raises nothing", not errors, "; ".join(errors))
 
     section("switching palettes with art on the canvas")
+    # There is no brush here, so the art is put on the canvas the way the
+    # converter would: by writing the grid.
     fx.execute_script(
-        "VP.canvas.setGrid(new Int8Array(256).fill(-1));"
-        "VP.canvas.paintSymmetric(0, 0, 4);"  # red
-        "VP.canvas.paintSymmetric(1, 0, 12);"  # blue
-        "VP.canvas.composite();"
+        """
+        var g = new Int8Array(256).fill(-1);
+        g[0] = 4;    /* red */
+        g[1] = 12;   /* blue */
+        VP.canvas.setGrid(g);
+        """
     )
     before = fx.execute_script(
         "return [VP.palette.colours()[VP.canvas.grid[0]],"
@@ -277,20 +278,39 @@ def run(fx: Marionette, base: str) -> None:
     check("the second image replaces the first", second == "test-grid.png", second)
     check("the replacement is the new image", dims == [4, 4], str(dims))
 
-    section("clearing the reference")
+    section("clearing the photo")
+    # The empty pane is the background plus the grid overlay, and the grid is
+    # always there — it is where the conversion will land. Both are greys in
+    # the red and green channels, so a pixel whose red and green differ is
+    # a pixel of the photograph.
+    def photo_pixels() -> int:
+        return fx.execute_script(
+            """
+            const c = document.getElementById('source-pane');
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            let coloured = 0;
+            for (let i = 0; i < d.length; i += 4) {
+              if (d[i] !== d[i+1]) coloured += 1;
+            }
+            return coloured;
+            """
+        )
+
+    while_loaded = photo_pixels()
+    check("the photograph is in the pane", while_loaded > 0, f"{while_loaded} pixels")
+
     fx.execute_script("VP.reference.clear();")
     time.sleep(0.4)
     has_image = fx.execute_script("return VP.reference.hasImage();")
-    strip = fx.execute_script(
-        "return getComputedStyle(document.getElementById('reference-strip')).display;"
-    )
     check("clearing releases the image", has_image is False, "the image is still there")
-    check("the strip goes away", strip == "none", f"display: {strip}")
+
+    cleared = photo_pixels()
+    check("the photograph goes out of the pane", cleared == 0, f"{cleared} pixels left")
 
     painted = fx.execute_script(
         "return Array.from(VP.canvas.grid).filter(function (v) { return v >= 0; }).length;"
     )
-    check("clearing the reference leaves the art alone", painted == 2, f"{painted} cells")
+    check("clearing the photo leaves the art alone", painted == 2, f"{painted} cells")
 
     section("converting twice")
     fx.set_file_input("#file-image", str(IMAGES / "test-photo.png"))
@@ -317,16 +337,28 @@ def run(fx: Marionette, base: str) -> None:
         f"{first_size}, {second_size}",
     )
 
-    section("undoing everything")
-    depth = fx.execute_script("return VP.app.state.history.undoCount;")
+    section("there is no undo stack")
+    # A pipeline has nothing to undo: the way to change the result is to
+    # change a setting and convert again.
+    stack = fx.execute_script(
+        "return {history: typeof VP.app.state.history,"
+        " module: typeof VP.history};"
+    )
+    check("the app has no undo stack", stack["history"] == "undefined", str(stack))
+    check("there is no history module", stack["module"] == "undefined", str(stack))
+
+    before = fx.execute_script(
+        "return Array.from(VP.canvas.grid).join(',');"
+    )
     for _ in range(12):
         fx.execute_script(
             "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}));"
         )
     time.sleep(0.5)
-    remaining = fx.execute_script("return VP.app.state.history.undoCount;")
-    check("undo stops at the bottom of the stack", remaining == 0, f"{remaining} left")
-    check("the history had something to undo", depth > 0, f"{depth}")
+    after = fx.execute_script(
+        "return Array.from(VP.canvas.grid).join(',');"
+    )
+    check("Ctrl+Z leaves the artwork alone", before == after, "the grid changed")
 
     errors = probe.errors(fx)
     check("no JavaScript errors in the whole hostile pass", not errors, "; ".join(errors))

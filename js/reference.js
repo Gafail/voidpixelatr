@@ -1,11 +1,11 @@
 /* ==========================================================================
-   VoidPixlr — reference.js
+   VoidPixelatr — reference.js
    --------------------------------------------------------------------------
-   The source layer: the photo, and everything that shows it.
+   The source layer: the photo, and everything that adjusts it.
 
-   There is one session image. It has two views (the underlay on the canvas,
-   the workspace pane) and one set of adjustments. Loading it anywhere sets
-   it; clearing it anywhere releases it completely.
+   There is one session image. It has one view — the source pane, beside the
+   grid — and one set of adjustments. Loading it sets it; clearing it releases
+   it completely.
 
    The no-upload guarantee holds here without exception: the file is decoded
    locally with createImageBitmap (or a data: URL on older Safari), drawn to a
@@ -48,9 +48,6 @@
   /* --- state ---------------------------------------------------------------- */
 
   const state = {
-    mode: "off",
-    opacity: 0.5,
-    fit: "cover",
     source: null,
     adjust: Q.defaultAdjust(),
     onChange: null,
@@ -63,27 +60,9 @@
   R.state = state;
 
   /* The module's own properties are the state's properties. Reading
-     `VP.reference.mode` and `VP.reference.state.mode` must mean the same
-     thing — there is only one mode, one opacity and one fit. */
+     `VP.reference.adjust` and `VP.reference.state.adjust` must mean the same
+     thing — there is only one set of adjustments. */
   Object.defineProperties(R, {
-    mode: {
-      get: () => state.mode,
-      set: (value) => {
-        state.mode = value;
-      },
-    },
-    opacity: {
-      get: () => state.opacity,
-      set: (value) => {
-        state.opacity = value;
-      },
-    },
-    fit: {
-      get: () => state.fit,
-      set: (value) => {
-        state.fit = value;
-      },
-    },
     adjust: {
       get: () => state.adjust,
       set: (value) => {
@@ -330,26 +309,18 @@
         paintCanvas(state.source.canvasSmall, small);
         state.adjustedStale = false;
 
-        R.resample();
         R.notify();
         return state.source;
       });
     });
   };
 
-  /* Releases the session image completely: the underlay goes blank, the
-     workspace's source goes blank, and the photo is deleted from IndexedDB.
-     It does not touch the artwork. */
+  /* Releases the session image completely: the source pane goes blank and
+     the photo is deleted from IndexedDB. It does not touch the artwork. */
   R.clear = function clear() {
     state.source = null;
     state.adjust = Q.defaultAdjust();
     state.adjustedStale = false;
-    const buffer = VP.canvas.referenceBuffer();
-    const context = VP.canvas.referenceContext();
-    if (buffer && context) {
-      context.clearRect(0, 0, buffer.width, buffer.height);
-    }
-    VP.canvas.composite();
     if (VP.storage && VP.storage.deletePhoto) VP.storage.deletePhoto();
     R.notify();
   };
@@ -369,7 +340,7 @@
 
     if (fast) {
       /* The reduced copy only. The full-resolution image keeps the last
-         settled adjustment, so the underlay does not flicker while a slider
+         settled adjustment, so the pane does not flicker while a slider
          is moving. It is brought up to date by commitAdjust() when the
          control settles. */
       state.source.adjustedSmall = Q.applyAdjustments(state.source.small, state.adjust);
@@ -383,7 +354,6 @@
       state.adjustedStale = false;
     }
 
-    R.resample();
     R.notify();
   };
 
@@ -400,7 +370,6 @@
     state.source.adjusted = Q.applyAdjustments(state.source.base, state.adjust);
     paintCanvas(state.source.canvas, state.source.adjusted);
     state.adjustedStale = false;
-    R.resample();
     return true;
   };
 
@@ -435,98 +404,12 @@
     return state.source ? state.source.adjusted : null;
   };
 
-  /* --- the underlay ------------------------------------------------------------------ */
+  /* --- the underlay is gone -----------------------------------------------------------------
 
-  /* Resamples the source into the reference buffer at exactly the canvas
-     size, nearest-neighbour, using the current fit mode.
-
-     The canvas is not square, so the buffer has a width and a height and
-     the fit is computed against both. Resampling into a square and
-     cropping it would squash the photo into the wrong shape. */
-  R.resample = function resample() {
-    const buffer = VP.canvas.referenceBuffer();
-    const context = VP.canvas.referenceContext();
-    if (!buffer || !context) return;
-
-    const sizeWidth = buffer.width;
-    const sizeHeight = buffer.height;
-    context.clearRect(0, 0, sizeWidth, sizeHeight);
-
-    if (!state.source) {
-      VP.canvas.composite();
-      return;
-    }
-
-    const image = state.source.canvas;
-    const scratch = document.createElement("canvas");
-    scratch.width = sizeWidth;
-    scratch.height = sizeHeight;
-    const scratchContext = scratch.getContext("2d", { willReadFrequently: true });
-    scratchContext.imageSmoothingEnabled = false;
-    scratchContext.clearRect(0, 0, sizeWidth, sizeHeight);
-
-    const width = image.width;
-    const height = image.height;
-
-    let drawWidth = width;
-    let drawHeight = height;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    if (state.fit === "cover") {
-      const scale = Math.max(sizeWidth / width, sizeHeight / height);
-      drawWidth = width * scale;
-      drawHeight = height * scale;
-      offsetX = (sizeWidth - drawWidth) / 2;
-      offsetY = (sizeHeight - drawHeight) / 2;
-    } else if (state.fit === "contain") {
-      const scale = Math.min(sizeWidth / width, sizeHeight / height);
-      drawWidth = width * scale;
-      drawHeight = height * scale;
-      offsetX = (sizeWidth - drawWidth) / 2;
-      offsetY = (sizeHeight - drawHeight) / 2;
-    }
-
-    scratchContext.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
-
-    /* The buffer holds the resampled photo; the display scales it up. */
-    context.imageSmoothingEnabled = false;
-    context.clearRect(0, 0, sizeWidth, sizeHeight);
-    context.drawImage(scratch, 0, 0);
-    VP.canvas.composite();
-  };
-
-  /* The fit mode is applied to the working copy, so `1:1` means one
-     working-copy pixel per cell. */
-  R.setFit = function setFit(fit) {
-    state.fit = fit;
-    R.resample();
-  };
-
-  R.cycleFit = function cycleFit() {
-    const order = ["cover", "contain", "1:1"];
-    const index = order.indexOf(state.fit);
-    R.setFit(order[(index + 1) % order.length]);
-    return state.fit;
-  };
-
-  R.setMode = function setMode(mode) {
-    state.mode = mode;
-    VP.canvas.composite();
-    R.notify();
-  };
-
-  R.cycleMode = function cycleMode() {
-    const order = ["off", "under", "over"];
-    const index = order.indexOf(state.mode);
-    R.setMode(order[(index + 1) % order.length]);
-    return state.mode;
-  };
-
-  R.setOpacity = function setOpacity(value) {
-    state.opacity = Math.min(1, Math.max(0, value));
-    VP.canvas.composite();
-  };
+     The photo is shown in the source pane, beside the grid, and nowhere else.
+     There is no underlay on the canvas, no overdraw on top of it, no opacity
+     and no fit mode: the grid decides what is converted, and the pane decides
+     how the photo is magnified to line up with it. */
 })(
   typeof globalThis !== "undefined"
     ? globalThis

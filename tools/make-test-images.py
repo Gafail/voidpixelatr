@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate test images for VoidPixlr.
+"""Generate test images for VoidPixelatr.
 
 Two images, both written as PNG with nothing but the standard library:
 

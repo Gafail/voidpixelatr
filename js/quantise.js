@@ -1,5 +1,5 @@
 /* ==========================================================================
-   VoidPixlr — quantise.js
+   VoidPixelatr — quantise.js
    --------------------------------------------------------------------------
    The pure algorithm layer. No DOM, no globals beyond `VP`, no side effects.
 
@@ -16,7 +16,7 @@
                                 -> hue -> greyscale
      · grid sampling            area average and nearest
      · the four match methods   flat, Bayer 8x8, Floyd-Steinberg, clustered
-     · geometry                 Bresenham lines, the grid serialiser
+     · the grid serialiser      one character per cell, and back again
 
    Loaded as a plain <script> (no modules, no build step) and attached to the
    single `VP` namespace.
@@ -977,37 +977,6 @@
       default:
         return Q.matchFlat(sample, paletteRgb);
     }
-  };
-
-  /* --- geometry ------------------------------------------------------------ */
-
-  /* Bresenham's line algorithm — every cell the stroke crosses, so a fast
-     drag leaves no gaps. */
-  Q.bresenham = function bresenham(x0, y0, x1, y1) {
-    const points = [];
-    let x = x0;
-    let y = y0;
-    const dx = Math.abs(x1 - x0);
-    const dy = -Math.abs(y1 - y0);
-    const sx = x0 < x1 ? 1 : -1;
-    const sy = y0 < y1 ? 1 : -1;
-    let error = dx + dy;
-
-    for (;;) {
-      points.push([x, y]);
-      if (x === x1 && y === y1) break;
-      const doubled = 2 * error;
-      if (doubled >= dy) {
-        error += dy;
-        x += sx;
-      }
-      if (doubled <= dx) {
-        error += dx;
-        y += sy;
-      }
-    }
-
-    return points;
   };
 
   /* --- the grid serialiser -------------------------------------------------- */

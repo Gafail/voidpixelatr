@@ -1,36 +1,30 @@
 /* ==========================================================================
-   VoidPixlr — canvas.js
+   VoidPixelatr — canvas.js
    --------------------------------------------------------------------------
    The rendering architecture: a layered buffer model rather than thousands of
    DOM nodes.
 
        artBuffer     offscreen canvas, width x height, 1 art pixel = 1 buffer pixel
        previewBuffer offscreen canvas, width x height, the live conversion
-       refBuffer     offscreen canvas, width x height, the reference underlay
        display       the <canvas> the user sees, size * scale, DPR-aware
 
-   A frame is composited in four steps: the reference (under), the art, the
-   live conversion (over the art), the grid lines — a few drawImage calls and
-   a few hundred line strokes, which is sub-millisecond at any size including
-   256x256.
+   A frame is composited in three steps: the art, the live conversion (over
+   the art), the grid lines — a few drawImage calls and a few hundred line
+   strokes, which is sub-millisecond at any size including 256x256.
 
    The canvas is not square. It has a width and a height, and every buffer,
    every grid index and every export follows both of them.
 
-   This file also owns the pointer handling: drag-paint with Bresenham
-   interpolation, the explicit eraser, right-drag erase, and symmetry.
+   There is no pointer handling here. This is a pipeline: the artwork is
+   converted, not drawn. The only thing that writes into the grid is the
+   converter, and the only thing that reads it is the exporter.
    ========================================================================== */
 
 (function (root) {
   "use strict";
 
   const VP = root.VP || (root.VP = {});
-  const Q = VP.quantise;
   const C = (VP.canvas = {});
-
-  /* The symmetry modes, as the top bar shows them. The group label already
-     says "Symmetry", so the button only needs the state. */
-  const SYMMETRY = ["off", "X", "Y", "X+Y"];
 
   const state = {
     width: 16,
@@ -38,21 +32,15 @@
     grid: new Int8Array(16 * 16).fill(-1),
     scale: 16,
     gridVisible: true,
-    symmetry: 0,
     artBuffer: null,
     artContext: null,
     previewBuffer: null,
     previewContext: null,
-    refBuffer: null,
-    refContext: null,
     display: null,
     context: null,
-    stroke: null,
-    onStrokeEnd: null,
   };
 
   C.state = state;
-  C.SYMMETRY = SYMMETRY;
 
   /* The grid is the canvas's state, but the rest of the app reaches for it
      as `VP.canvas.grid`. This keeps that spelling honest and live. */
@@ -82,11 +70,8 @@
     state.artContext = state.artBuffer.getContext("2d");
     state.previewBuffer = makeCanvas(state.width, state.height);
     state.previewContext = state.previewBuffer.getContext("2d");
-    state.refBuffer = makeCanvas(state.width, state.height);
-    state.refContext = state.refBuffer.getContext("2d");
     C.rebuildArt();
     C.resizeDisplay();
-    C.bindPointer();
   };
 
   /* --- the grid ------------------------------------------------------------ */
@@ -131,20 +116,13 @@
     state.artContext = state.artBuffer.getContext("2d");
     state.previewBuffer = makeCanvas(newWidth, newHeight);
     state.previewContext = state.previewBuffer.getContext("2d");
-    state.refBuffer = makeCanvas(newWidth, newHeight);
-    state.refContext = state.refBuffer.getContext("2d");
-
-    /* The underlay lives in a buffer at the canvas's size, and the resize
-       made a new one — so the photo has to be resampled into it. Without
-       this the reference simply vanishes on every resize. */
-    if (VP.reference && VP.reference.resample) VP.reference.resample();
 
     C.rebuildArt();
     C.resizeDisplay();
     C.composite();
   };
 
-  /* --- painting ------------------------------------------------------------ */
+  /* --- the art buffer -------------------------------------------------------- */
 
   /* Paints a grid into a buffer: one cell per grid index, the row stride is
      the grid's width. */
@@ -180,7 +158,7 @@
 
   /* The workspace's live conversion, drawn over the art in the same canvas.
      It is a layer, not a second canvas: the app has one art canvas, and the
-     Image mode shows it beside the photo.
+     source pane sits beside it.
 
      The layer may be smaller than the canvas — the reduced-quality tier
      samples fewer cells — and the composite stretches it back up, so the
@@ -218,52 +196,6 @@
 
   C.hasPreview = function hasPreview() {
     return !!state.previewContext;
-  };
-
-  /* Writes one cell into the art buffer. */
-  C.paintCell = function paintCell(col, row, value) {
-    const width = state.width;
-    const height = state.height;
-    if (col < 0 || row < 0 || col >= width || row >= height) return false;
-    const index = row * width + col;
-    /* A grid that does not match the canvas size would otherwise be written
-       out of bounds, which a typed array swallows silently. */
-    if (index >= state.grid.length) return false;
-    if (state.grid[index] === value) return false;
-
-    state.grid[index] = value;
-    const context = state.artContext;
-    if (value < 0) {
-      context.clearRect(col, row, 1, 1);
-    } else {
-      const hex = VP.palette.colours()[value];
-      if (!hex) return false;
-      context.fillStyle = hex;
-      context.fillRect(col, row, 1, 1);
-    }
-    return true;
-  };
-
-  /* Applies symmetry to one cell: the cell itself, plus its mirror images.
-     The centre cell of an odd-sized canvas is painted once, not four times. */
-  C.paintSymmetric = function paintSymmetric(col, row, value) {
-    const width = state.width;
-    const height = state.height;
-    const cells = [[col, row]];
-    if (state.symmetry === 1 || state.symmetry === 3) cells.push([width - 1 - col, row]);
-    if (state.symmetry === 2 || state.symmetry === 3) cells.push([col, height - 1 - row]);
-    if (state.symmetry === 3) cells.push([width - 1 - col, height - 1 - row]);
-
-    let changed = false;
-    const seen = new Set();
-    for (const [x, y] of cells) {
-      if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      const key = y * width + x;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (C.paintCell(x, y, value)) changed = true;
-    }
-    return changed;
   };
 
   /* --- the display ---------------------------------------------------------- */
@@ -377,7 +309,6 @@
 
   /* The scale to use after the canvas size changes: the current one if the
      canvas still fits, otherwise the largest that does.
-
      Without this, a 256x256 canvas kept the 16x it inherited from a 32x32
      one — a canvas 4096 CSS pixels across, three times the width of the
      pane it was supposed to sit in. */
@@ -397,13 +328,8 @@
     C.composite();
   };
 
-  C.setSymmetry = function setSymmetry(mode) {
-    state.symmetry = mode;
-  };
-
-  /* Composites the frame: reference (under), art, the live conversion (over
-     the art), the reference (over), and the grid lines last, so they stay
-     legible over everything. */
+  /* Composites the frame: the art, the live conversion (over the art), and
+     the grid lines last, so they stay legible over everything. */
   C.composite = function composite() {
     const context = state.context;
     if (!context) return;
@@ -422,30 +348,12 @@
     context.fillStyle = "#1a1a1f";
     context.fillRect(0, 0, cssWidth, cssHeight);
 
-    const reference = VP.reference;
-    const hasReference = reference && reference.hasImage();
-    const mode = reference ? reference.mode : "off";
-    const opacity = reference ? reference.opacity : 0.5;
-
-    if (hasReference && mode === "under") {
-      context.globalAlpha = opacity;
-      context.drawImage(state.refBuffer, 0, 0, cssWidth, cssHeight);
-      context.globalAlpha = 1;
-    }
-
     context.drawImage(state.artBuffer, 0, 0, cssWidth, cssHeight);
 
     /* The live conversion, over the art. It is a layer of this canvas, not
-       a second canvas: the Image mode shows this same canvas beside the
-       photo. */
+       a second canvas: the source pane sits beside this one. */
     if (state.previewBuffer) {
       context.drawImage(state.previewBuffer, 0, 0, cssWidth, cssHeight);
-    }
-
-    if (hasReference && mode === "over") {
-      context.globalAlpha = opacity;
-      context.drawImage(state.refBuffer, 0, 0, cssWidth, cssHeight);
-      context.globalAlpha = 1;
     }
 
     if (state.gridVisible && state.scale >= 8) {
@@ -466,102 +374,6 @@
     }
 
     context.globalAlpha = 1;
-  };
-
-  /* --- the reference buffer ---------------------------------------------------- */
-
-  /* Hands the reference module the buffer it should draw into. */
-  C.referenceBuffer = function referenceBuffer() {
-    return state.refBuffer;
-  };
-
-  C.referenceContext = function referenceContext() {
-    return state.refContext;
-  };
-
-  /* --- pointer handling ---------------------------------------------------------- */
-
-  function cellFromEvent(event) {
-    const display = state.display;
-    const rect = display.getBoundingClientRect();
-    const col = Math.floor((event.clientX - rect.left) / state.scale);
-    const row = Math.floor((event.clientY - rect.top) / state.scale);
-    return [
-      Math.min(state.width - 1, Math.max(0, col)),
-      Math.min(state.height - 1, Math.max(0, row)),
-    ];
-  }
-
-  function eraserForEvent(event) {
-    if (event.button === 2) return true;
-    if (event.altKey) return true;
-    if (VP.palette.state.activeIndex === -1) return true;
-    return false;
-  }
-
-  function paintAt(col, row, erase) {
-    const value = erase ? -1 : VP.palette.state.activeIndex;
-    if (value === undefined) return;
-    return C.paintSymmetric(col, row, value);
-  }
-
-  C.bindPointer = function bindPointer() {
-    const display = state.display;
-    if (!display) return;
-
-    display.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-    });
-
-    display.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0 && event.button !== 2) return;
-      event.preventDefault();
-      display.setPointerCapture(event.pointerId);
-
-      const [col, row] = cellFromEvent(event);
-      state.stroke = {
-        erase: eraserForEvent(event),
-        last: [col, row],
-        changed: false,
-      };
-
-      if (VP.app && VP.app.beginStroke) VP.app.beginStroke();
-      if (paintAt(col, row, state.stroke.erase)) state.stroke.changed = true;
-      C.composite();
-    });
-
-    display.addEventListener("pointermove", (event) => {
-      if (!state.stroke) return;
-      event.preventDefault();
-      const [col, row] = cellFromEvent(event);
-      const [lastCol, lastRow] = state.stroke.last;
-      if (col === lastCol && row === lastRow) return;
-
-      /* Bresenham, so a fast drag leaves a continuous line. */
-      const points = Q.bresenham(lastCol, lastRow, col, row);
-      for (const [x, y] of points) {
-        if (paintAt(x, y, state.stroke.erase)) state.stroke.changed = true;
-      }
-      state.stroke.last = [col, row];
-      C.composite();
-    });
-
-    const endStroke = (event) => {
-      if (!state.stroke) return;
-      const changed = state.stroke.changed;
-      state.stroke = null;
-      if (display.hasPointerCapture && display.hasPointerCapture(event.pointerId)) {
-        display.releasePointerCapture(event.pointerId);
-      }
-      if (VP.app && VP.app.endStroke) VP.app.endStroke(changed);
-    };
-
-    display.addEventListener("pointerup", endStroke);
-    display.addEventListener("pointercancel", endStroke);
-    display.addEventListener("pointerleave", (event) => {
-      /* The pointer is captured, so a leave does not end the stroke. */
-      if (!state.stroke && event.buttons === 0) return;
-    });
   };
 })(
   typeof globalThis !== "undefined"

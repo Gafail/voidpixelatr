@@ -1,4 +1,4 @@
-"""VoidPixlr — the shared error probe for the browser suites.
+"""VoidPixelatr — the shared error probe for the browser suites.
 
 The probe has to be in place **before** the app's own scripts run, so a
 boot-time exception cannot slip past unnoticed.

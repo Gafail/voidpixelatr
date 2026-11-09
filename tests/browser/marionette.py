@@ -15,7 +15,7 @@ Usage:
     from marionette import Marionette
 
     with Marionette() as firefox:
-        firefox.navigate("http://127.0.0.1:8790/")
+        firefox.navigate("http://127.0.0.1:8792/")
         firefox.execute_script("return document.title")
         firefox.screenshot("/tmp/shot.png")
 """

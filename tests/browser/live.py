@@ -1,32 +1,38 @@
 #!/usr/bin/env python3
-"""VoidPixlr — check a deployed site.
+"""VoidPixelatr — check a served site under the real CSP.
 
 The browser suites need to inject an error probe into the page before the
 app's scripts run, which means they need write access to the served tree.
-A deployed site has none — and must not have any, because the deploy
-ships the site and nothing else.
+A served site has none — and must not have any, because a deploy ships the
+site and nothing else.
 
-So this is the check for a *deployed* site. It does not need the probe:
-the thing it proves is that the app boots at all under the real
+So this is the check for a *served* site. It does not need the probe: the
+thing it proves is that the app boots at all under the real
 Content-Security-Policy. A blocked inline script would leave `VP` undefined
 and the palette unrendered, which is exactly what this looks for.
 
-    python3 tests/browser/live.py --base http://192.168.100.100
+    python3 tests/browser/live.py --base http://127.0.0.1:8793
+
+Point it at the CSP server to check the real headers:
+
+    python3 tests/browser/csp_server.py --port 8793 &
+    python3 tests/browser/live.py --base http://127.0.0.1:8793
+
+There is no container for this project yet and nothing is deployed. The
+check exists so that the day there is one, the site is verified the same way.
 
 What it checks:
 
     · the page loads and the app boots (VP is there)
     · the palette rendered — so every script loaded, under the real CSP
-    · the canvas is the right size and the zoom is sensible
+    · the pipeline is on screen: the source pane, the menu and the action
     · a photo loads locally and the pipeline converts it
-    · a photo over the working cap is downscaled without an error
     · zero network requests outside the origin
 """
 
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -58,7 +64,7 @@ def section(title: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://192.168.100.100")
+    parser.add_argument("--base", default="http://127.0.0.1:8793")
     args = parser.parse_args(sys.argv[1:])
 
     if not IMAGES.exists():
@@ -75,10 +81,14 @@ def main() -> int:
         time.sleep(1.2)
 
         title = firefox.execute_script("return document.title;")
-        check("the page is the app", "VoidPixlr" in (title or ""), f"title was {title!r}")
+        check(
+            "the page is the app",
+            "VoidPixelatr" in (title or ""),
+            f"title was {title!r}",
+        )
 
         booted = firefox.execute_script(
-            "return typeof VP === 'object' && !!VP.canvas && !!VP.palette;"
+            "return typeof VP === 'object' && !!VP.canvas && !!VP.palette && !!VP.workspace;"
         )
         check(
             "the app booted — every script loaded under the real CSP",
@@ -91,114 +101,49 @@ def main() -> int:
         )
         check("the palette rendered", swatches == 17, f"got {swatches}")
 
-        section("the canvas")
-        canvas = firefox.execute_script(
-            "const c = document.getElementById('art-canvas');"
-            "const r = document.getElementById('canvas-region');"
-            "return {size: VP.canvas.state.width + '×' + VP.canvas.state.height,"
-            " scale: VP.canvas.state.scale,"
-            " css: Math.round(c.getBoundingClientRect().width), room: r.clientWidth};"
+        section("the pipeline is on screen")
+        layout = firefox.execute_script(
+            """
+            const pane = document.getElementById('ws-source-pane');
+            const menu = document.getElementById('menu-pipeline');
+            const foot = document.getElementById('menu-foot');
+            const canvas = document.getElementById('art-canvas');
+            const region = document.getElementById('canvas-region');
+            return {
+              pane: pane.getBoundingClientRect().width,
+              menu: menu.getBoundingClientRect().height,
+              foot: foot.getBoundingClientRect().height,
+              css: Math.round(canvas.getBoundingClientRect().width),
+              room: region.clientWidth,
+            };
+            """
         )
+        check("the source pane is there", layout["pane"] > 100, str(layout))
+        check("the pipeline's controls are there", layout["menu"] > 50, str(layout))
+        check("the action is pinned at the foot", layout["foot"] > 10, str(layout))
         check(
             "the canvas fits its pane",
-            canvas["css"] <= canvas["room"],
-            f"{canvas['css']}px in a {canvas['room']}px pane",
+            layout["css"] <= layout["room"],
+            f"{layout['css']}px in a {layout['room']}px pane",
         )
 
-        section("a photo, loaded locally")
+        section("the pipeline runs")
         firefox.set_file_input("#file-image", str(IMAGES / "test-photo.png"))
         firefox.execute_script(
             "document.getElementById('file-image').dispatchEvent(new Event('change', {bubbles: true}));"
         )
-        time.sleep(1.5)
+        time.sleep(1.8)
 
         loaded = firefox.execute_script("return VP.reference.hasImage();")
         check("the photo loaded", loaded is True, "no image")
 
-        mode = firefox.execute_script("return VP.reference.mode;")
-        check(
-            "the photo is switched on, not silently off",
-            mode != "off",
-            "the reference mode is 'off', so the photo is invisible",
-        )
+        firefox.execute_script("VP.workspace.extract();")
+        time.sleep(1.2)
+        extracted = firefox.execute_script("return VP.palette.colours().length;")
+        check("a palette was extracted", extracted > 0, f"{extracted} colours")
 
-        painted = firefox.execute_script(
-            "const c = document.getElementById('art-canvas');"
-            "const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;"
-            "let seen = 0;"
-            "for (let i = 0; i < d.length; i += 4) {"
-            "  if (d[i] !== 0x1a || d[i+1] !== 0x1a || d[i+2] !== 0x1f) seen += 1;"
-            "}"
-            "return seen;"
-        )
-        check(
-            "the photo is actually on the canvas",
-            painted > 0,
-            "the canvas is still empty",
-        )
-
-        # A photo over the working cap has to be downscaled, and the
-        # downscale used to hand an ImageData straight to drawImage, which
-        # Firefox refuses. Every other image here is under the cap, so
-        # nothing caught it on the deployed site either.
-        large = IMAGES / "test-large.png"
-        if large.exists():
-            section("a photo over the working cap")
-            firefox.set_file_input("#file-image", str(large))
-            firefox.execute_script(
-                "document.getElementById('file-image').dispatchEvent(new Event('change', {bubbles: true}));"
-            )
-            time.sleep(3.0)
-
-            alert = firefox.execute_script(
-                "return {shown: !document.getElementById('alert').hidden,"
-                " text: document.getElementById('alert-text').textContent};"
-            )
-            check(
-                "an over-cap photo loads on the deployed site",
-                firefox.execute_script("return VP.reference.hasImage();") is True,
-                alert["text"] or "no image",
-            )
-            check(
-                "an over-cap photo raises no error on the deployed site",
-                not alert["shown"],
-                alert["text"],
-            )
-
-            dims = firefox.execute_script(
-                "var s = VP.reference.state.source;"
-                "return [s.width, s.height, s.originalWidth, s.originalHeight];"
-            )
-            check(
-                "the over-cap photo is downscaled to the working copy",
-                dims[0] <= 2048 and dims[1] <= 2048,
-                str(dims),
-            )
-            check(
-                "the over-cap photo keeps its original dimensions",
-                dims[2] == 2400 and dims[3] == 1800,
-                str(dims),
-            )
-
-            # Put the small photo back for the rest of the run.
-            firefox.set_file_input("#file-image", str(IMAGES / "test-photo.png"))
-            firefox.execute_script(
-                "document.getElementById('file-image').dispatchEvent(new Event('change', {bubbles: true}));"
-            )
-            time.sleep(1.5)
-
-        section("the pipeline")
-        firefox.execute_script("document.getElementById('workspace-toggle').click();")
-        time.sleep(0.6)
-        firefox.execute_script("document.getElementById('ws-extract').click();")
-        time.sleep(1.5)
-        extracted = firefox.execute_script(
-            "return document.getElementById('ws-palette-status').textContent;"
-        )
-        check("a palette was extracted", bool(extracted and extracted.strip()), "no status")
-
-        firefox.execute_script("document.getElementById('ws-convert').click();")
-        time.sleep(1.5)
+        firefox.execute_script("VP.workspace.convert();")
+        time.sleep(1.8)
         converted = firefox.execute_script(
             "return {cells: VP.canvas.state.grid.filter(v => v >= 0).length,"
             " size: VP.canvas.state.width + '×' + VP.canvas.state.height};"

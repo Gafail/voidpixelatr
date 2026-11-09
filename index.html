@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VoidPixlr — pixel art, and photos into pixels</title>
-<meta name="description" content="A pixel-art canvas for 16 to 512px art, square or not. Load a photo, frame it under a grid, pull a palette out of it and convert it to pixel art — entirely in your browser, with nothing ever uploaded.">
+<title>VoidPixelatr — photos into pixel art</title>
+<meta name="description" content="Load a photo, frame it under a grid, pull a palette out of it and convert it to pixel art — entirely in your browser, with nothing ever uploaded.">
 <meta name="color-scheme" content="dark">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230d0d0f'/%3E%3Crect x='2' y='2' width='5' height='5' fill='%234f4fff'/%3E%3Crect x='9' y='9' width='5' height='5' fill='%23e8e8ea'/%3E%3C/svg%3E">
@@ -19,13 +19,10 @@
        clue what it was; the label says what the group is, and the button
        says what the group is doing. -->
   <header class="top-bar" id="top">
-    <span class="wordmark">VoidPixlr</span>
+    <span class="wordmark">VoidPixelatr</span>
 
     <!-- The photo is the way into the whole pipeline, so it gets a button
-         that is always there. It used to live in the reference strip, and
-         the strip is hidden until a photo is loaded — so before your first
-         load there was nothing to click, and dropping a file only worked
-         if you released it over exactly the right box. -->
+         that is always there. -->
     <button type="button" class="btn" id="load-photo" title="Load a photo (I)">Load photo</button>
 
     <div class="group" role="group" aria-label="Canvas size">
@@ -41,15 +38,6 @@
       <span class="group-label">Grid</span>
       <button type="button" class="btn" id="grid-toggle" title="Grid lines (G)">on</button>
     </div>
-
-    <div class="group" role="group" aria-label="Symmetry">
-      <span class="group-label">Symmetry</span>
-      <button type="button" class="btn" id="symmetry-toggle" title="Symmetry (S)">off</button>
-    </div>
-
-    <button type="button" class="btn" id="undo">Undo</button>
-    <button type="button" class="btn" id="redo">Redo</button>
-    <button type="button" class="btn" id="workspace-toggle" title="Image workspace (W)">Image</button>
   </header>
 
   <!-- ── The alert bar ────────────────────────────────────────────────────── -->
@@ -58,28 +46,6 @@
   <div class="alert" id="alert" hidden>
     <span class="alert-text" id="alert-text"></span>
     <button type="button" class="btn" id="alert-dismiss">Dismiss</button>
-  </div>
-
-  <!-- ── Reference strip ──────────────────────────────────────────────────── -->
-  <div class="reference-strip" id="reference-strip" hidden>
-    <span class="group-label">Reference</span>
-    <button type="button" class="btn" id="reference-load">Load&hellip;</button>
-    <span class="strip-name" id="reference-name">image</span>
-    <div class="group" role="group" aria-label="Reference mode">
-      <span class="group-label">Mode</span>
-      <button type="button" class="btn" id="reference-mode" title="Reference mode (M)">off</button>
-    </div>
-    <label class="strip-label" for="reference-opacity">
-      Opacity
-      <input type="range" id="reference-opacity" min="0" max="100" value="50">
-      <span class="readout" id="reference-opacity-value">50%</span>
-    </label>
-    <div class="group" role="group" aria-label="Reference fit">
-      <span class="group-label">Fit</span>
-      <button type="button" class="btn" id="reference-fit" title="Reference fit (F)">cover</button>
-    </div>
-    <button type="button" class="btn" id="reference-clear">Clear</button>
-    <span class="never">never uploaded</span>
   </div>
 
   <!-- ── Inline panels ────────────────────────────────────────────────────── -->
@@ -102,26 +68,21 @@
 
     <div class="inline-panel" id="import-panel" hidden>
       <button type="button" class="btn" id="import-json">Import JSON&hellip;</button>
-      <button type="button" class="btn" id="import-png">Import PNG&hellip;</button>
-      <button type="button" class="btn" id="import-reference">Load PNG as reference&hellip;</button>
       <span class="panel-label">JSON palette</span>
       <button type="button" class="btn import-mode is-active" id="import-adopt">Adopt the file&rsquo;s</button>
       <button type="button" class="btn import-mode" id="import-remap">Remap to mine</button>
-      <button type="button" class="btn" id="import-scale" hidden>Scale</button>
-      <button type="button" class="btn" id="import-crop" hidden>Crop top-left</button>
       <span class="panel-error" id="import-error"></span>
     </div>
   </div>
 
-  <!-- ── The menu ─────────────────────────────────────────────────────────── -->
-  <!-- One column, on the left, and everything in it drops open. There used
-       to be two columns of controls — the palette on the far left and the
-       Image mode's controls beside it — and they were both open at once.
-       Now there is one menu, and a section stays shut until it is wanted.
+  <!-- ── The menu ──────────────────────────────────────────────────────────── -->
+  <!-- One column, on the left, and everything in it drops open. The pipeline's
+       controls are not a mode: they are always here, because the pipeline is
+       the whole app.
 
-       The colours are a pop-over rather than a section: a sixty-four
-       swatch grid takes more room than the whole menu, and it is wanted
-       for a moment at a time, not all the time. -->
+       The colours are a pop-over rather than a section: a sixty-four swatch
+       grid takes more room than the whole menu, and it is wanted for a moment
+       at a time, not all the time. -->
   <aside class="sidebar" id="sidebar">
 
     <div class="menu" id="menu">
@@ -145,7 +106,7 @@
             <button type="button" class="btn" id="palette-delete">Delete</button>
           </div>
 
-          <button type="button" class="btn wide" id="palette-generate">Generate from image&hellip;</button>
+          <button type="button" class="btn wide" id="palette-generate">Extract from photo&hellip;</button>
           <p class="side-note" id="sidebar-note"></p>
         </div>
       </section>
@@ -161,9 +122,8 @@
         </button>
       </section>
 
-      <!-- The Image mode's controls. They live in the same menu as
-           everything else, and they only appear when the Image mode is on. -->
-      <div class="menu-group" id="menu-image" hidden>
+      <!-- The pipeline's controls. -->
+      <div class="menu-group" id="menu-pipeline">
 
         <section class="menu-section" data-section="adjust">
           <button type="button" class="menu-head" aria-expanded="false" aria-controls="menu-adjust">
@@ -305,7 +265,7 @@
     </div>
 
     <!-- The pinned action. It never scrolls away and is never cut. -->
-    <div class="menu-foot" id="menu-foot" hidden>
+    <div class="menu-foot" id="menu-foot">
       <button type="button" class="btn wide accent-btn" id="ws-convert">Apply to canvas</button>
       <p class="side-note" id="ws-status"></p>
     </div>
@@ -333,14 +293,14 @@
   </aside>
 
   <!-- ── Centre ───────────────────────────────────────────────────────────── -->
-  <!-- One canvas. The Image mode does not bring a second one: it brings the
-       source pane, and the canvas that was already there becomes the live
-       result. The controls live in the menu, not in a column of their own. -->
+  <!-- The photo on the left, the result on the right. There is no mode to
+       switch between and no second canvas: the grid overlay decides what is
+       converted, and the canvas holds what came out. -->
   <main class="centre" id="centre">
 
     <!-- The photo. Its own zoom, which never touches the canvas's, and its
          own grid, which never touches the photo's. -->
-    <div class="ws-pane" id="ws-source-pane" hidden>
+    <div class="ws-pane" id="ws-source-pane">
       <div class="pane-head">
         <span class="pane-label">Source</span>
         <span class="pane-tools">
@@ -363,8 +323,8 @@
       <p class="pane-empty" id="ws-source-empty">Drop an image here, or <button type="button" class="link-btn" id="ws-source-load">click to load</button><br><span class="pane-hint">Shift+drag moves the grid</span></p>
     </div>
 
-    <!-- The artwork. In the Image mode this is where the live conversion
-         lands, over the art, in the very same canvas. -->
+    <!-- The result. The live conversion lands here, over the art, in the very
+         same canvas. -->
     <div class="canvas-view" id="canvas-view">
       <div class="pane-head">
         <span class="pane-label">Canvas</span>
@@ -382,10 +342,8 @@
   </main>
 
   <!-- ── Bottom bar ───────────────────────────────────────────────────────── -->
-  <!-- The artwork's own lifecycle: make it, bring it in, take it out. The top
-       bar is for working on it. -->
+  <!-- Taking the result out, and putting it all away again. -->
   <footer class="bottom-bar" id="bottom">
-    <button type="button" class="btn" id="new-canvas" title="New (R)">New</button>
     <button type="button" class="btn" id="import">Import</button>
     <button type="button" class="btn" id="export-png">Export PNG</button>
     <button type="button" class="btn" id="export-json">Export JSON</button>
@@ -399,11 +357,9 @@
 <!-- Hidden file inputs. Nothing is uploaded — these files are read locally. -->
 <input type="file" id="file-image" accept="image/*" hidden>
 <input type="file" id="file-json" accept="application/json,.json" hidden>
-<input type="file" id="file-png" accept="image/png" hidden>
 
 <script src="js/quantise.js"></script>
 <script src="js/palette.js"></script>
-<script src="js/history.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/canvas.js"></script>
 <script src="js/reference.js"></script>

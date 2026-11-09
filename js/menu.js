@@ -1,5 +1,5 @@
 /* ==========================================================================
-   VoidPixlr — menu.js
+   VoidPixelatr — menu.js
    --------------------------------------------------------------------------
    The menu: one column on the left, and everything in it drops open.
 

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   VoidPixlr — palette.js
+   VoidPixelatr — palette.js
    --------------------------------------------------------------------------
    The palette model and its UI: three nested built-ins, user palettes, colour
    editing, reordering, the staging palette used by the generator and the

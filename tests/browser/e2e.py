@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""VoidPixlr — end-to-end browser tests.
+"""VoidPixelatr — end-to-end browser tests.
 
 Drives the real app in a real Firefox over Marionette. No dependencies, no
 test framework, no npm: the house rule applies to the tests too.
 
-    python3 tests/browser/e2e.py [--keep-shots] [--base http://127.0.0.1:8790]
+    python3 tests/browser/e2e.py [--keep-shots] [--base http://127.0.0.1:8792]
 
 What it covers:
 
     · the app boots with no JavaScript errors
-    · the palette renders, the reference strip stays hidden
-    · drag-paint leaves no gaps, the eraser and right-drag erase
-    · symmetry paints the mirrored cells
-    · undo and redo restore the grid exactly
-    · a reference image loads locally and lands under the grid
-    · the whole pipeline: extract a palette, convert, undo the conversion
+    · the palette renders and the pipeline is on screen from the start
+    · a photo loads locally and lands in the source pane
+    · the whole pipeline: extract a palette, tune it, convert it
+    · the grid has its own zoom and pan, and the photo does not move them
     · the export files are written to disk
     · autosave survives a reload, and "forget everything" wipes it
     · **zero network requests** during the entire pipeline
@@ -91,7 +89,7 @@ def set_canvas_size(fx: Marionette, width: int, height: int | None = None) -> No
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://127.0.0.1:8790")
+    parser.add_argument("--base", default="http://127.0.0.1:8792")
     parser.add_argument("--keep-shots", action="store_true")
     parser.add_argument("--shots", default=str(SHOTS))
     args = parser.parse_args(argv[1:])
@@ -176,102 +174,44 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
     )
     check("the palette selector lists the built-ins", options == 3, f"got {options}")
 
-    strip = fx.execute_script(
-        "return getComputedStyle(document.getElementById('reference-strip')).display"
+    # There is no mode to switch on: the pipeline is the app.
+    source_pane = fx.execute_script(
+        "const p = document.getElementById('ws-source-pane');"
+        "return {display: getComputedStyle(p).display,"
+        " width: p.getBoundingClientRect().width};"
     )
-    check("the reference strip is hidden with no reference", strip == "none", f"display: {strip}")
+    check(
+        "the source pane is on screen from the start",
+        source_pane["display"] != "none" and source_pane["width"] > 100,
+        str(source_pane),
+    )
 
-    workspace = fx.execute_script(
-        "return getComputedStyle(document.getElementById('menu-image')).display"
+    pipeline = fx.execute_script(
+        "const m = document.getElementById('menu-pipeline');"
+        "return {display: getComputedStyle(m).display,"
+        " height: m.getBoundingClientRect().height};"
     )
-    check("the workspace is hidden until it is opened", workspace == "none", f"display: {workspace}")
+    check(
+        "the pipeline's controls are on screen from the start",
+        pipeline["display"] != "none" and pipeline["height"] > 50,
+        str(pipeline),
+    )
+
+    # And there are no drawing tools left in it.
+    drawing = fx.execute_script(
+        """
+        var gone = ['symmetry-toggle', 'undo', 'redo', 'workspace-toggle',
+                    'reference-strip', 'new-canvas', 'reference-mode',
+                    'reference-opacity', 'reference-fit'];
+        var present = gone.filter(function (id) { return !!document.getElementById(id); });
+        return present;
+        """
+    )
+    check("there are no drawing tools in the app", not drawing, str(drawing))
 
     fx.screenshot(str(shots / "01-first-load.png"))
 
-    section("painting")
-    fx.execute_script(
-        "VP.palette.setActiveIndex(3); VP.palette.hooks.render();"
-    )
-
-    # Drag across the canvas: a horizontal stroke from cell (2,4) to (9,4).
-    rect = fx.execute_script(
-        "var r = document.getElementById('art-canvas').getBoundingClientRect();"
-        "return {x: r.x, y: r.y, w: r.width, h: r.height};"
-    )
-    scale = 16
-    cell = rect["w"] / 16.0
-
-    def centre(col: int, row: int) -> tuple[float, float]:
-        return (rect["x"] + (col + 0.5) * cell, rect["y"] + (row + 0.5) * cell)
-
-    start = centre(2, 4)
-    end = centre(9, 4)
-    fx.perform_actions(
-        [
-            {
-                "type": "pointer",
-                "id": "mouse",
-                "parameters": {"pointerType": "mouse"},
-                "actions": [
-                    {"type": "pointerMove", "duration": 0, "x": start[0], "y": start[1]},
-                    {"type": "pointerDown", "button": 0},
-                    {"type": "pointerMove", "duration": 120, "x": end[0], "y": end[1]},
-                    {"type": "pointerUp", "button": 0},
-                ],
-            }
-        ]
-    )
-    fx.release_actions()
-    time.sleep(0.3)
-
-    painted = fx.execute_script(
-        "return Array.from(VP.canvas.grid).filter(function (v) { return v === 3; }).length;"
-    )
-    check("a drag paints every cell along the line", painted == 8, f"painted {painted} cells")
-
-    row = fx.execute_script(
-        "return Array.from(VP.canvas.grid.slice(4 * 16, 5 * 16));"
-    )
-    check(
-        "the stroke is continuous with no gaps",
-        row[2] == 3 and row[9] == 3 and row[10] != 3,
-        f"row {row}",
-    )
-
-    fx.screenshot(str(shots / "02-painted.png"))
-
-    section("undo and redo")
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}));")
-    time.sleep(0.2)
-    after_undo = fx.execute_script(
-        "return Array.from(VP.canvas.grid).filter(function (v) { return v === 3; }).length;"
-    )
-    check("undo removes the stroke", after_undo == 0, f"{after_undo} cells left")
-
-    fx.execute_script(
-        "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true, shiftKey: true}));"
-    )
-    time.sleep(0.2)
-    after_redo = fx.execute_script(
-        "return Array.from(VP.canvas.grid).filter(function (v) { return v === 3; }).length;"
-    )
-    check("redo restores the stroke", after_redo == 8, f"{after_redo} cells")
-
-    section("the eraser")
-    fx.execute_script("VP.palette.setActiveIndex(-1); VP.palette.hooks.render();")
-    fx.execute_script("VP.canvas.paintSymmetric(4, 4, -1); VP.canvas.composite();")
-    erased = fx.execute_script("return VP.canvas.grid[4 * 16 + 4];")
-    check("the eraser clears a cell", erased == -1, f"value {erased}")
-
-    section("symmetry")
-    fx.execute_script(
-        "VP.canvas.setSymmetry(1); VP.canvas.paintSymmetric(2, 8, 5); VP.canvas.composite();"
-    )
-    mirrored = fx.execute_script("return [VP.canvas.grid[8 * 16 + 2], VP.canvas.grid[8 * 16 + 13]];")
-    check("mirror X paints both cells", mirrored == [5, 5], f"{mirrored}")
-    fx.execute_script("VP.canvas.setSymmetry(0);")
-
-    section("the reference image")
+    section("the photo")
     fx.set_file_input("#file-image", str(IMAGES / "test-photo.png"))
     fx.execute_script(
         "var input = document.getElementById('file-image');"
@@ -282,38 +222,25 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
     has_image = fx.execute_script("return VP.reference.hasImage();")
     check("the image loads locally", bool(has_image), "no session image")
 
-    strip_display = fx.execute_script(
-        "return getComputedStyle(document.getElementById('reference-strip')).display;"
+    # The photo has to land where the user is looking — the source pane,
+    # beside the grid.
+    pane_pixels = fx.execute_script(
+        """
+        const c = document.getElementById('source-pane');
+        const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+        let lit = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i] !== 0x0d || d[i+1] !== 0x0d || d[i+2] !== 0x0f) lit += 1;
+        }
+        return lit;
+        """
     )
-    check("the reference strip appears", strip_display != "none", f"display: {strip_display}")
-
-    never = fx.execute_script(
-        "return document.querySelector('.never').textContent.trim();"
-    )
-    check("the strip says never uploaded", never == "never uploaded", never)
+    check("the photo is drawn in the source pane", pane_pixels > 0, f"{pane_pixels} pixels")
 
     dims = fx.execute_script(
         "var s = VP.reference.state.source; return [s.width, s.height];"
     )
     check("the working copy is bounded at 2048", dims[0] <= 2048 and dims[1] <= 2048, str(dims))
-
-    # The underlay lives in a buffer at the canvas's size, so a resize makes
-    # a new one — and the photo has to be resampled into it. It used to
-    # simply vanish, on every resize, and it was resampled as if the canvas
-    # were square, so a rectangle squashed the photo.
-    underlay = """
-      const c = VP.canvas.referenceBuffer();
-      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-      let lit = 0;
-      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) lit += 1;
-      return [c.width, c.height, lit];
-    """
-    before_underlay = fx.execute_script(underlay)
-    check(
-        "the underlay is drawn at the canvas's size",
-        before_underlay[0] == 16 and before_underlay[1] == 16 and before_underlay[2] > 0,
-        str(before_underlay),
-    )
 
     # A rectangle: 64 x 16. The underlay must follow both edges.
     fx.execute_script("document.getElementById('size-lock').click();")
@@ -334,12 +261,6 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
         fx.click("#resize-confirm")
         time.sleep(0.5)
 
-    rect = fx.execute_script(underlay)
-    check(
-        "the underlay follows a rectangular canvas",
-        rect[0] == 64 and rect[1] == 16 and rect[2] > 0,
-        str(rect),
-    )
     check(
         "the canvas is a rectangle",
         fx.execute_script("return VP.canvas.state.width + '×' + VP.canvas.state.height;")
@@ -411,16 +332,12 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
         )
         time.sleep(1.5)
 
-    fx.execute_script("VP.reference.setMode('under');")
-    time.sleep(0.3)
-    fx.screenshot(str(shots / "03-reference-underlay.png"))
+    fx.screenshot(str(shots / "03-photo-loaded.png"))
 
-    section("the image workspace")
-    fx.execute_script("VP.workspace.toggle();")
-    time.sleep(0.6)
+    section("the pipeline")
     fx.execute_script("VP.workspace.fitSource();")
     time.sleep(0.4)
-    fx.screenshot(str(shots / "04-workspace.png"))
+    fx.screenshot(str(shots / "04-pipeline.png"))
 
     # Every network request from here on is the thing under test.
     fx.execute_script("performance.clearResourceTimings();")
@@ -581,7 +498,7 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
     )
     check("a click elsewhere closes the pop-over", popover_closed is True, "still open")
 
-    # The Image mode's controls are in the menu, not in a column of their own.
+    # The pipeline's controls are in the menu, not in a column of their own.
     in_menu = fx.execute_script(
         """
         var menu = document.getElementById('menu');
@@ -596,7 +513,7 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
         """
     )
     check(
-        "the Image mode's controls live in the menu",
+        "the pipeline's controls live in the menu",
         in_menu["black"] and in_menu["extract"] and in_menu["convert"],
         f"{in_menu}",
     )
@@ -923,14 +840,6 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
         f"the state says {preset['state']} and the slider says {preset['slider']}",
     )
 
-    section("undo the conversion")
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}));")
-    time.sleep(0.3)
-    undone = fx.execute_script(
-        "return Array.from(VP.canvas.grid).filter(function (v) { return v === 3; }).length;"
-    )
-    check("the conversion is undoable", undone > 0, f"{undone} cells left")
-
     section("the no-upload guarantee")
     resources = fx.execute_script(
         "return performance.getEntriesByType('resource').map(function (e) { return e.name; });"
@@ -1012,9 +921,9 @@ def run(fx: Marionette, base: str, shots: Path, downloads: Path) -> None:
     )
     time.sleep(0.5)
     remaining = fx.execute_script(
-        "return [localStorage.getItem('voidpixlr:canvas:v2'),"
-        " localStorage.getItem('voidpixlr:palettes:v2'),"
-        " localStorage.getItem('voidpixlr:prefs:v2')];"
+        "return [localStorage.getItem('voidpixelatr:canvas:v2'),"
+        " localStorage.getItem('voidpixelatr:palettes:v2'),"
+        " localStorage.getItem('voidpixelatr:prefs:v2')];"
     )
     check("forget everything clears the local storage", not any(remaining), str(remaining))
 
@@ -1076,36 +985,17 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
     after = fx.execute_script("return Array.from(VP.canvas.grid).join(',');")
     check("a refused import leaves the canvas untouched", before == after, "the grid changed")
 
-    section("import PNG")
-    fx.set_file_input("#file-png", str(IMAGES / "test-grid.png"))
-    fx.execute_script(
-        "document.getElementById('file-png').dispatchEvent(new Event('change', {bubbles: true}));"
-    )
-    time.sleep(1.0)
-
-    prompt = fx.execute_script("return document.getElementById('import-error').textContent;")
-    check("an odd-sized PNG asks what to do", "scale it to" in prompt.lower(), prompt)
-
-    fx.execute_script("document.getElementById('import-scale').click();")
-    time.sleep(0.8)
-
-    size = fx.execute_script(
-        "return VP.canvas.state.width + '×' + VP.canvas.state.height;"
-    )
-    check("the PNG import resizes the canvas", size == "16×16", f"size {size}")
-
-    snapped = fx.execute_script(
-        "return Array.from(VP.canvas.grid).filter(function (v) { return v >= 0; }).length;"
-    )
-    # The source is 4x4 with a transparent column; scaled to 16x16 it
-    # becomes a transparent quarter of the canvas.
-    check("the PNG import snaps every pixel", snapped == 16 * 12, f"{snapped} pixels")
-
     section("resize keeps the art")
-    fx.execute_script("VP.canvas.setGrid(new Int8Array(256).fill(-1));")
-    fx.execute_script("VP.canvas.paintSymmetric(0, 0, 3);")
-    fx.execute_script("VP.canvas.paintSymmetric(15, 15, 3);")
-    fx.execute_script("VP.canvas.composite();")
+    # There is no brush in this app, so the art is put on the canvas the way
+    # the converter would: by writing the grid.
+    fx.execute_script(
+        """
+        var g = new Int8Array(256).fill(-1);
+        g[0] = 3;
+        g[15 * 16 + 15] = 3;
+        VP.canvas.setGrid(g);
+        """
+    )
 
     fx.execute_script(
         "const x = document.getElementById('size-x');"
@@ -1135,15 +1025,6 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
         f"corners {corners}",
     )
 
-    fx.execute_script(
-        "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}));"
-    )
-    time.sleep(0.3)
-    size = fx.execute_script(
-        "return VP.canvas.state.width + '×' + VP.canvas.state.height;"
-    )
-    check("the resize is undoable", size == "16×16", f"size {size}")
-
     section("the keyboard")
     grid_before = fx.execute_script("return VP.canvas.state.gridVisible;")
     fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'g'}));")
@@ -1151,46 +1032,47 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
     grid_after = fx.execute_script("return VP.canvas.state.gridVisible;")
     check("G toggles the grid", grid_before != grid_after, f"{grid_before} -> {grid_after}")
 
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'e'}));")
-    time.sleep(0.2)
-    eraser = fx.execute_script("return VP.palette.state.activeIndex;")
-    check("E enters eraser mode", eraser == -1, f"index {eraser}")
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'e'}));")
-    time.sleep(0.2)
-    colour = fx.execute_script("return VP.palette.state.activeIndex;")
-    check("E again leaves eraser mode", colour >= 0, f"index {colour}")
-
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 's'}));")
-    time.sleep(0.2)
-    symmetry = fx.execute_script("return VP.canvas.state.symmetry;")
-    check("S cycles the symmetry", symmetry == 1, f"mode {symmetry}")
-    fx.execute_script("VP.canvas.setSymmetry(0);")
-
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'm'}));")
-    time.sleep(0.2)
-    mode = fx.execute_script("return VP.reference.state.mode;")
-    check("M cycles the reference mode", mode in ("off", "under", "over"), f"mode {mode}")
-
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'w'}));")
-    time.sleep(0.5)
-    opened = fx.execute_script("return VP.workspace.isOpen();")
-    check("W toggles the workspace", opened is True, f"open: {opened}")
-    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'w'}));")
-    time.sleep(0.3)
-
-    section("the reference fit modes")
+    # L auto-levels the photo.
     fx.set_file_input("#file-image", str(IMAGES / "test-photo.png"))
     fx.execute_script(
         "document.getElementById('file-image').dispatchEvent(new Event('change', {bubbles: true}));"
     )
-    time.sleep(1.2)
+    time.sleep(1.5)
+    before_levels = fx.execute_script("return VP.reference.state.adjust.black;")
+    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'l'}));")
+    time.sleep(0.4)
+    after_levels = fx.execute_script("return VP.reference.state.adjust.black;")
+    check(
+        "L auto-levels the photo",
+        after_levels != before_levels,
+        f"black point {before_levels} -> {after_levels}",
+    )
 
-    fits = []
-    for _ in range(3):
-        fits.append(fx.execute_script("return VP.reference.state.fit;"))
-        fx.execute_script("VP.reference.cycleFit();")
-        time.sleep(0.2)
-    check("the fit modes cycle", fits == ["cover", "contain", "1:1"], str(fits))
+    # X cycles the match method.
+    before_match = fx.execute_script("return VP.workspace.state.matchMethod;")
+    fx.execute_script("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'x'}));")
+    time.sleep(0.3)
+    after_match = fx.execute_script("return VP.workspace.state.matchMethod;")
+    check("X cycles the match method", after_match != before_match, f"{before_match} -> {after_match}")
+
+    # The arrows pan the source.
+    before_pan = fx.execute_script("return VP.workspace.state.panX;")
+    fx.execute_script(
+        "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight'}));"
+    )
+    time.sleep(0.3)
+    after_pan = fx.execute_script("return VP.workspace.state.panX;")
+    check("an arrow key pans the source", after_pan != before_pan, f"{before_pan} -> {after_pan}")
+
+    # And there is no undo stack to reach for.
+    fx.execute_script(
+        "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}));"
+    )
+    time.sleep(0.3)
+    still = fx.execute_script(
+        "return Array.from(VP.canvas.grid).filter(function (v) { return v >= 0; }).length;"
+    )
+    check("Ctrl+Z does nothing — there is no undo stack", still >= 0, f"{still} cells")
 
     section("copy PNG never dead-ends")
     label_before = fx.execute_script("return document.getElementById('copy-png').textContent;")
@@ -1207,7 +1089,11 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
     fx.execute_script("VP.canvas.resize(256, 256);")
     time.sleep(0.3)
     fx.execute_script(
-        "for (var i = 0; i < 200; i++) { VP.canvas.paintSymmetric(i % 256, (i * 7) % 256, 3); }"
+        """
+        var g = new Int8Array(256 * 256).fill(-1);
+        for (var i = 0; i < 200; i++) { g[(i * 7) % (256 * 256)] = 3; }
+        VP.canvas.setGrid(g);
+        """
     )
     started = fx.execute_script(
         "var t = performance.now(); VP.canvas.rebuildArt(); return performance.now() - t;"
@@ -1232,72 +1118,55 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
     check("a 256x256 composite at 4x stays fast", started < 50, f"{started:.1f} ms")
 
     section("the inline confirm")
+    # The confirmation lives on "Forget everything" now: there is no "New"
+    # in a pipeline, because there is no artwork to start over.
     fx.execute_script(
-        "VP.canvas.resize(16, 16);"
-        "VP.canvas.setGrid(new Int8Array(256).fill(-1));"
-        "VP.canvas.paintSymmetric(1, 1, 3);"
-        "VP.canvas.composite();"
+        """
+        var g = new Int8Array(256).fill(-1);
+        g[0] = 3;
+        VP.canvas.setGrid(g);
+        """
     )
-    fx.click("#new-canvas")
+    fx.click("#forget")
     time.sleep(0.3)
-    label = fx.execute_script("return document.getElementById('new-canvas').textContent;")
-    check("New asks before it clears", label == "Sure?", label)
+    label = fx.execute_script("return document.getElementById('forget').textContent;")
+    check("Forget everything asks before it wipes", label == "Sure?", label)
 
     still_there = fx.execute_script(
         "return Array.from(VP.canvas.grid).filter(function (v) { return v >= 0; }).length;"
     )
-    check("nothing is cleared until it is confirmed", still_there == 1, f"{still_there} cells")
-
-    fx.click("#new-canvas")
-    time.sleep(0.4)
-    cleared = fx.execute_script(
-        "return Array.from(VP.canvas.grid).filter(function (v) { return v >= 0; }).length;"
-    )
-    check("the second click clears the canvas", cleared == 0, f"{cleared} cells")
+    check("nothing is wiped until it is confirmed", still_there == 1, f"{still_there} cells")
 
     # The confirmation must not expire. It used to time out after two
     # seconds, so click it, read the label, look away for a moment, click
     # again — and the second click armed it a second time instead of
-    # confirming it. The canvas never cleared and the button looked broken.
-    fx.execute_script(
-        "VP.canvas.paintSymmetric(1, 1, 3); VP.canvas.composite();"
-    )
-    time.sleep(0.3)
-    fx.click("#new-canvas")
+    # confirming it.
     time.sleep(2.5)
-    fx.click("#new-canvas")
-    time.sleep(0.4)
-    cleared_slow = fx.execute_script(
-        "return Array.from(VP.canvas.grid).filter(function (v) { return v >= 0; }).length;"
+    label_still_armed = fx.execute_script(
+        "return document.getElementById('forget').textContent;"
     )
     check(
-        "New still clears when the two clicks are far apart",
-        cleared_slow == 0,
-        f"{cleared_slow} cells left",
+        "the confirmation does not expire on a timer",
+        label_still_armed == "Sure?",
+        f"the button reads '{label_still_armed}'",
     )
 
     # And a click somewhere else cancels the armed confirmation.
-    fx.execute_script(
-        "VP.canvas.paintSymmetric(1, 1, 3); VP.canvas.composite();"
-    )
-    time.sleep(0.3)
-    fx.click("#new-canvas")
-    time.sleep(0.2)
     fx.execute_script("document.getElementById('art-canvas').click();")
     time.sleep(0.2)
     label_cancelled = fx.execute_script(
-        "return document.getElementById('new-canvas').textContent;"
+        "return document.getElementById('forget').textContent;"
     )
     check(
         "a click elsewhere cancels the confirmation",
-        label_cancelled == "New",
+        label_cancelled == "Forget everything",
         f"the button reads '{label_cancelled}'",
     )
     still_painted = fx.execute_script(
         "return Array.from(VP.canvas.grid).filter(function (v) { return v >= 0; }).length;"
     )
     check(
-        "a cancelled confirmation does not clear anything",
+        "a cancelled confirmation does not wipe anything",
         still_painted == 1,
         f"{still_painted} cells",
     )
@@ -1405,8 +1274,6 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
         "document.getElementById('file-image').dispatchEvent(new Event('change', {bubbles: true}));"
     )
     time.sleep(1.5)
-    fx.execute_script("VP.workspace.open();")
-    time.sleep(0.8)
 
     preview_of_palette = """
         const c = VP.canvas.state.previewBuffer;
@@ -1434,14 +1301,12 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
 
     section("click to upload, and drop it anywhere")
 
-    # Start from the state that matters: no photo loaded, so the reference
-    # strip is hidden.
+    # Start from the state that matters: no photo loaded.
     fx.execute_script("VP.reference.clear();")
     time.sleep(0.5)
 
-    # The photo is the way into the whole pipeline. Its button used to live
-    # in the reference strip, and the strip is hidden until a photo is
-    # loaded — so before your first load there was nothing to click.
+    # The photo is the way into the whole pipeline, and its button is always
+    # there — in the top bar, where nothing can hide it.
     upload = fx.execute_script(
         """
         const b = document.getElementById('load-photo');
@@ -1450,7 +1315,6 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
         return {
           present: true,
           visible: r.width > 1 && r.height > 1 && !b.closest('[hidden]'),
-          stripHidden: document.getElementById('reference-strip').hidden,
           text: b.textContent,
         };
         """
@@ -1458,7 +1322,7 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
     check("there is a button to load a photo", upload.get("present") is True, "no button")
     check(
         "the load button is visible before any photo is loaded",
-        upload.get("visible") is True and upload.get("stripHidden") is True,
+        upload.get("visible") is True,
         str(upload),
     )
 
@@ -1476,9 +1340,7 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
     )
     check("the load button opens the file picker", wired == "file-image", str(wired))
 
-    # The empty state in the workspace is a click target too.
-    fx.execute_script("VP.workspace.open();")
-    time.sleep(0.6)
+    # The empty state in the source pane is a click target too.
     empty = fx.execute_script(
         """
         const button = document.getElementById('ws-source-load');
@@ -1486,15 +1348,13 @@ def features(fx: Marionette, base: str, shots: Path) -> None:
         """
     )
     check(
-        "the workspace empty state offers a way in",
+        "the source pane's empty state offers a way in",
         empty["present"] is True,
         str(empty),
     )
 
     # And a photo dropped ANYWHERE on the page loads — not only over the
     # canvas. Releasing it over the sidebar used to do nothing at all.
-    fx.execute_script("VP.workspace.close();")
-    time.sleep(0.4)
 
     dropped = fx.execute_async_script(
         """

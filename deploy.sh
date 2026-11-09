@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VoidPixlr — deploy to the LAN host.
+# VoidPixelatr — deploy to the LAN host.
 #
 # Usage:
 #   ./deploy.sh              # deploy to the registered host
@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # The umbrella repo holds the shared nginx snippets and the host keys. This
 # project is standalone: it is a SIBLING of the umbrella on the Desktop
-# (~/Desktop/voidpixlr and ~/Desktop/TheVoidCo), not a child of it. So the
+# (~/Desktop/voidpixelatr and ~/Desktop/TheVoidCo), not a child of it. So the
 # umbrella is found by walking up the tree, and then by looking at the
 # siblings of this folder. Set REPO_ROOT to override both.
 find_repo_root() {
@@ -51,7 +51,7 @@ REPO_ROOT="$(find_repo_root "$SCRIPT_DIR" || true)"
 if [ -z "${REPO_ROOT:-}" ]; then
   echo "error: could not find the umbrella repo (ops/nginx-snippets/security-headers.conf)." >&2
   echo "       It normally sits next to this folder on the Desktop." >&2
-  echo "       Point REPO_ROOT at it, or set VOIDPIXLR_KEY and copy the snippet by hand." >&2
+  echo "       Point REPO_ROOT at it, or set VOIDPIXELATR_KEY and copy the snippet by hand." >&2
   exit 1
 fi
 
@@ -61,15 +61,15 @@ fi
 # 192.0.2.0 is the RFC 5737 documentation address. It is deliberately NOT a
 # real address: the deploy refuses to run against it, so a half-provisioned
 # host can never be overwritten by accident.
-HOST="${1:-${VOIDPIXLR_HOST:-192.0.2.0}}"
-USER="${VOIDPIXLR_USER:-root}"
+HOST="${1:-${VOIDPIXELATR_HOST:-192.0.2.0}}"
+USER="${VOIDPIXELATR_USER:-root}"
 
 # There is ONE deploy key for TheVoidCo's infrastructure
 # (ops/keys/thevoidco-lxc-id_ed25519). A container cloned from the template
 # inherits it in /root/.ssh/authorized_keys, so this is the same key every
 # other Void* host uses — not a per-project key.
-KEY="${VOIDPIXLR_KEY:-$REPO_ROOT/ops/keys/thevoidco-lxc-id_ed25519}"
-WEBROOT="/var/www/voidpixlr"
+KEY="${VOIDPIXELATR_KEY:-$REPO_ROOT/ops/keys/thevoidco-lxc-id_ed25519}"
+WEBROOT="/var/www/voidpixelatr"
 
 # The token in the checked-in vhost that stands in for the real address.
 PLACEHOLDER_IP="192.0.2.0"
@@ -81,7 +81,7 @@ if [ "$HOST" = "$PLACEHOLDER_IP" ]; then
   echo "  so it is only known once the container is provisioned." >&2
   echo "" >&2
   echo "  Pass it explicitly:   ./deploy.sh 192.168.100.xxx" >&2
-  echo "  or set it for a run:  VOIDPIXLR_HOST=192.168.100.xxx ./deploy.sh" >&2
+  echo "  or set it for a run:  VOIDPIXELATR_HOST=192.168.100.xxx ./deploy.sh" >&2
   echo "" >&2
   echo "  The placeholder is ${PLACEHOLDER_IP} (RFC 5737 documentation range)." >&2
   echo "  Deploying to it would be meaningless; refusing." >&2
@@ -134,21 +134,21 @@ say "Installing nginx configuration"
 
 "${SCP[@]}" "$REPO_ROOT/ops/nginx-snippets/security-headers.conf" \
   "$USER@$HOST:/tmp/security-headers.conf"
-"${SCP[@]}" "$SCRIPT_DIR/ops/nginx/voidpixlr.conf" \
-  "$USER@$HOST:/tmp/voidpixlr.conf"
+"${SCP[@]}" "$SCRIPT_DIR/ops/nginx/voidpixelatr.conf" \
+  "$USER@$HOST:/tmp/voidpixelatr.conf"
 
 "${SSH[@]}" "$USER@$HOST" \
-  "sed 's|${PLACEHOLDER_IP//./\\.}|${HOST}|g' /tmp/voidpixlr.conf > /tmp/voidpixlr.conf.new && \
+  "sed 's|${PLACEHOLDER_IP//./\\.}|${HOST}|g' /tmp/voidpixelatr.conf > /tmp/voidpixelatr.conf.new && \
    install -m 644 /tmp/security-headers.conf /etc/nginx/snippets/security-headers.conf && \
-   install -m 644 /tmp/voidpixlr.conf.new /etc/nginx/sites-available/voidpixlr.conf && \
-   ln -sf /etc/nginx/sites-available/voidpixlr.conf /etc/nginx/sites-enabled/voidpixlr.conf && \
-   rm -f /tmp/security-headers.conf /tmp/voidpixlr.conf /tmp/voidpixlr.conf.new"
+   install -m 644 /tmp/voidpixelatr.conf.new /etc/nginx/sites-available/voidpixelatr.conf && \
+   ln -sf /etc/nginx/sites-available/voidpixelatr.conf /etc/nginx/sites-enabled/voidpixelatr.conf && \
+   rm -f /tmp/security-headers.conf /tmp/voidpixelatr.conf /tmp/voidpixelatr.conf.new"
 
 # 3. One container, one site.
 #
 #    The template the container was cloned from carries its own base landing
 #    page, and that vhost is `listen 80 default_server` — exactly like
-#    VoidPixlr's. Two default servers on one port is a hard nginx error:
+#    VoidPixelatr's. Two default servers on one port is a hard nginx error:
 #
 #      [emerg] a duplicate default server for 0.0.0.0:80
 #
@@ -157,7 +157,7 @@ say "Installing nginx configuration"
 #    template's page is one `ln -sf` away from coming back.
 say "Disabling the template's own site"
 "${SSH[@]}" "$USER@$HOST" \
-  "find /etc/nginx/sites-enabled -mindepth 1 -maxdepth 1 ! -name 'voidpixlr.conf' -print -delete"
+  "find /etc/nginx/sites-enabled -mindepth 1 -maxdepth 1 ! -name 'voidpixelatr.conf' -print -delete"
 
 # 4. Validate and reload. nginx -t runs first, so a broken config never
 #    takes the running site down.

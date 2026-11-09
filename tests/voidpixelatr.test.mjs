@@ -1,7 +1,7 @@
 /* ==========================================================================
-   VoidPixlr — dependency-free behaviour tests
+   VoidPixelatr — dependency-free behaviour tests
    --------------------------------------------------------------------------
-       node tests/voidpixlr.test.mjs
+       node tests/voidpixelatr.test.mjs
 
    No test framework, no jsdom, no npm install — the repo's "no dependencies"
    rule applies to the tests too.
@@ -9,9 +9,9 @@
    Three layers:
 
      1. the pure algorithm layer (js/quantise.js) — colour maths, matching,
-        the palette generator, the sampler, the four match methods, the
-        adjustments and the geometry;
-     2. the models (palette, history, storage) — loaded against a minimal
+        the palette generator, the sampler, the four match methods and the
+        adjustments;
+     2. the models (palette, storage, reference) — loaded against a minimal
         shim;
      3. the house rules — the no-upload guarantee, the CSP constraints and
         the aesthetic, checked against the real source files.
@@ -111,13 +111,11 @@ vm.createContext(sandbox);
 
 loadScript("quantise.js", sandbox);
 loadScript("palette.js", sandbox);
-loadScript("history.js", sandbox);
 loadScript("storage.js", sandbox);
 loadScript("reference.js", sandbox);
 
 const Q = sandbox.VP.quantise;
 const P = sandbox.VP.palette;
-const H = sandbox.VP.history;
 const S = sandbox.VP.storage;
 
 /* A localStorage shim, so the storage layer can be tested for real. */
@@ -999,102 +997,6 @@ check("auto levels on a flat image stays safe", () => {
 });
 
 /* ==========================================================================
-   Geometry
-   ========================================================================== */
-
-console.log("\ngeometry");
-
-check("Bresenham draws a horizontal line", () => {
-  const points = Q.bresenham(0, 0, 3, 0);
-  assertDeep(points, [[0, 0], [1, 0], [2, 0], [3, 0]], "points");
-});
-
-check("Bresenham draws a diagonal", () => {
-  const points = Q.bresenham(0, 0, 3, 3);
-  assertDeep(points, [[0, 0], [1, 1], [2, 2], [3, 3]], "points");
-});
-
-check("Bresenham includes both ends", () => {
-  const points = Q.bresenham(2, 5, 9, 1);
-  assertDeep(points[0], [2, 5], "the start");
-  assertDeep(points[points.length - 1], [9, 1], "the end");
-});
-
-check("Bresenham never skips a cell", () => {
-  const points = Q.bresenham(0, 0, 10, 4);
-  for (let i = 1; i < points.length; i += 1) {
-    const dx = Math.abs(points[i][0] - points[i - 1][0]);
-    const dy = Math.abs(points[i][1] - points[i - 1][1]);
-    assert(dx <= 1 && dy <= 1, `a gap between ${points[i - 1]} and ${points[i]}`);
-  }
-});
-
-/* ==========================================================================
-   The history
-   ========================================================================== */
-
-console.log("\nthe history");
-
-check("the depth follows the canvas size", () => {
-  assertEqual(H.depthFor(16), 50, "16");
-  assertEqual(H.depthFor(32), 50, "32");
-  assertEqual(H.depthFor(64), 50, "64");
-  assertEqual(H.depthFor(128), 50, "128");
-  assertEqual(H.depthFor(256), 20, "256");
-});
-
-check("undo returns the previous state and redo returns it again", () => {
-  const history = H.create(50);
-  /* A snapshot is the state *before* an edit, so the stack holds the state
-     to come back to. */
-  const beforeFirst = { width: 16, height: 16, grid: Int8Array.from([1, 1, 1, 1]) };
-  const beforeSecond = { width: 16, height: 16, grid: Int8Array.from([2, 2, 2, 2]) };
-  history.push(beforeFirst);
-  history.push(beforeSecond);
-
-  const undone = history.undo({ width: 16, height: 16, grid: Int8Array.from([3, 3, 3, 3]) });
-  assertDeep(Array.from(undone.grid), [2, 2, 2, 2], "the undone grid");
-  assertEqual(undone.width, 16, "the undone width");
-  assertEqual(undone.height, 16, "the undone height");
-  assert(history.canRedo, "redo is unavailable");
-
-  const redone = history.redo({ width: 16, height: 16, grid: Int8Array.from([2, 2, 2, 2]) });
-  assertDeep(Array.from(redone.grid), [3, 3, 3, 3], "the redone grid");
-});
-
-check("undo on an empty stack returns nothing", () => {
-  const history = H.create(50);
-  assertEqual(history.undo({ width: 16, height: 16, grid: new Int8Array(4) }), null, "undo");
-  assertEqual(history.redo({ width: 16, height: 16, grid: new Int8Array(4) }), null, "redo");
-});
-
-check("a new edit clears the redo stack", () => {
-  const history = H.create(50);
-  history.push({ width: 16, height: 16, grid: new Int8Array(4) });
-  history.undo({ width: 16, height: 16, grid: new Int8Array(4) });
-  assert(history.canRedo, "redo should be available");
-  history.push({ width: 16, height: 16, grid: new Int8Array(4) });
-  assert(!history.canRedo, "redo should have been cleared");
-});
-
-check("the stack is capped at its depth", () => {
-  const history = H.create(3);
-  for (let i = 0; i < 10; i += 1) {
-    history.push({ width: 16, height: 16, grid: Int8Array.from([i]) });
-  }
-  assertEqual(history.undoCount, 3, "undo count");
-});
-
-check("setDepth trims the history", () => {
-  const history = H.create(50);
-  for (let i = 0; i < 40; i += 1) {
-    history.push({ width: 16, height: 16, grid: Int8Array.from([i]) });
-  }
-  history.setDepth(20);
-  assertEqual(history.undoCount, 20, "undo count after the trim");
-});
-
-/* ==========================================================================
    The palette model
    ========================================================================== */
 
@@ -1221,9 +1123,9 @@ check("the palettes round-trip", () => {
 });
 
 check("only the three documented keys are used", () => {
-  assertEqual(S.KEYS.canvas, "voidpixlr:canvas:v2", "canvas key");
-  assertEqual(S.KEYS.palettes, "voidpixlr:palettes:v2", "palettes key");
-  assertEqual(S.KEYS.prefs, "voidpixlr:prefs:v2", "prefs key");
+  assertEqual(S.KEYS.canvas, "voidpixelatr:canvas:v2", "canvas key");
+  assertEqual(S.KEYS.palettes, "voidpixelatr:palettes:v2", "palettes key");
+  assertEqual(S.KEYS.prefs, "voidpixelatr:prefs:v2", "prefs key");
 });
 
 check("a write that throws is swallowed", () => {
@@ -1244,7 +1146,6 @@ console.log("\nhouse rules");
 const JS_FILES = [
   "js/quantise.js",
   "js/palette.js",
-  "js/history.js",
   "js/storage.js",
   "js/canvas.js",
   "js/reference.js",
@@ -1312,7 +1213,7 @@ check("there is no inline script and no inline event handler", () => {
 
 check("the scripts are plain files, loaded in order, with no modules", () => {
   const sources = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
-  assertEqual(sources.length, 10, "script count");
+  assertEqual(sources.length, 9, "script count");
   assert(!sources.some((src) => src.includes("type=\"module\"")), "an ES module");
   assertEqual(sources[0], "js/quantise.js", "the first script");
   assertEqual(sources[sources.length - 1], "js/app.js", "the last script");
@@ -1392,7 +1293,7 @@ check("the source limits are stated on the load page", () => {
 
 /* --- the deployment rules -------------------------------------------------- */
 
-const vhost = read("ops/nginx/voidpixlr.conf");
+const vhost = read("ops/nginx/voidpixelatr.conf");
 const deploy = read("deploy.sh");
 
 check("the vhost names a documentation address, not a live machine", () => {
@@ -1431,14 +1332,14 @@ check("the deploy substitutes the placeholder for the real address", () => {
 check("the deploy uses the shared house key, not one of its own", () => {
   assert(/thevoidco-lxc-id_ed25519/.test(deploy), "the deploy does not use the shared key");
   assert(
-    !/voidpixlr-lxc-id_ed25519/.test(deploy),
+    !/voidpixelatr-lxc-id_ed25519/.test(deploy),
     "the deploy invents a per-project key — there is one key for all of TheVoidCo",
   );
 });
 
 check("the deploy disables the template's own site before enabling ours", () => {
   assert(
-    /find \/etc\/nginx\/sites-enabled .*! -name 'voidpixlr\.conf'/.test(deploy),
+    /find \/etc\/nginx\/sites-enabled .*! -name 'voidpixelatr\.conf'/.test(deploy),
     "the deploy does not remove the template's own enabled site",
   );
   assert(
@@ -1577,8 +1478,12 @@ check("the canvas is rectangular all the way down", () => {
   assert(/width: 16,\s*\n\s*height: 16,/.test(canvas), "the canvas has no width and height");
   assert(!/state\.size\b/.test(canvas), "the canvas still has a single size");
 
-  /* The grid is indexed by a row stride, not by a square. */
-  assert(/row \* width \+ col/.test(canvas), "the grid is still indexed as a square");
+  /* The grid is indexed by a row stride, not by a square: the column is
+     the remainder and the row is the quotient. */
+  assert(
+    /i % width/.test(canvas) && /Math\.floor\(i \/ width\)/.test(canvas),
+    "the grid is still indexed as a square",
+  );
   assert(
     /Q\.sampleGrid = function sampleGrid\(source, width, height/.test(quantise),
     "the sampler still takes one size",
@@ -1686,11 +1591,11 @@ check("there is one menu, on the left, and it drops open", () => {
     "there is no left-hand column for the menu",
   );
 
-  /* The Image mode's controls live inside that same menu, not in a column
+  /* The pipeline's controls live inside that same menu, not in a column
      of their own. */
-  assert(markup.includes('id="menu-image"'), "the Image mode has no menu group");
+  assert(markup.includes('id="menu-pipeline"'), "the pipeline has no menu group");
   const menuGroup = markup.slice(
-    markup.indexOf('id="menu-image"'),
+    markup.indexOf('id="menu-pipeline"'),
     markup.indexOf('id="menu-foot"')
   );
   for (const id of ["ws-black", "ws-extract", "ws-match-flat"]) {
@@ -1926,14 +1831,14 @@ check("the spec's palette tables match the build", () => {
   }
 });
 
-check("a loaded photo switches the reference on", () => {
-  /* The reference loaded but stayed in mode "off", so the canvas never
-     changed: the user loaded an image and saw nothing, and concluded the
-     upload had failed. */
+check("a loaded photo lands in the source pane", () => {
+  /* There is one view of the photo, and it is the pane beside the grid. If
+     the load did not put it there, the user would load an image and see
+     nothing at all and conclude the upload had failed. */
   const source = read("js/app.js");
   assert(
-    /VP\.reference\.mode === "off"\)\s*VP\.reference\.setMode\("under"\)/.test(source),
-    "loading an image does not switch the reference on",
+    /function loadImageFile[\s\S]{0,900}VP\.workspace\.fitSource\(\)/.test(source),
+    "loading an image does not fit it into the source pane",
   );
 });
 
@@ -2061,12 +1966,16 @@ check("the pane labels are headers, not overlays on the image", () => {
 });
 
 check("every control group is labelled", () => {
-  /* A bare "G", or a row of naked numbers, gave no clue what it was. */
-  const groups = [...html.matchAll(/class="group"[^>]*>([\s\S]*?)<\/div>/g)];
+  /* A bare "G", or a row of naked numbers, gave no clue what it was.
+     The groups are a <div> in the top bar and a <span> in the source pane's
+     header, so both tags are matched. */
+  const groups = [
+    ...html.matchAll(/<(div|span) class="group"[^>]*>([\s\S]*?)<\/\1>/g),
+  ];
   assert(groups.length >= 4, `only ${groups.length} labelled groups`);
   for (const group of groups) {
     assert(
-      group[1].includes("group-label"),
+      group[2].includes("group-label"),
       "a group has no label telling the user what it is",
     );
   }
@@ -2167,11 +2076,11 @@ check("every slider has a reset button", () => {
   assert(markup.includes('id="canvas-fit"'), "the canvas zoom has no fit button");
   assert(markup.includes('id="grid-fit"'), "the grid zoom has no fit button");
 
-  /* And the one in the reference strip, which the app wires up. */
+  /* And there is no slider left over from the drawing half of the app. */
   const app = read("js/app.js");
   assert(
-    app.includes('attachReset(opacity, "the reference opacity")'),
-    "the reference opacity slider has no reset button",
+    !markup.includes('id="reference-opacity"'),
+    "the reference opacity slider is still in the markup",
   );
 
   /* The reset target is the slider's own shipped value, so the button and
@@ -2307,14 +2216,15 @@ check("there is always a way to load a photo", () => {
     /load-photo[\s\S]{0,200}openFilePicker\("file-image"\)/.test(app),
     "the load-photo button does not open the file picker",
   );
-  /* The strip is hidden until there is an image, so the button cannot live
-     in there. */
+  /* The source pane is always on screen — there is no mode to open. */
   assert(
-    /id="load-photo"[\s\S]{0,4000}<div class="reference-strip" id="reference-strip" hidden>/.test(
-      markup,
-    ) === false ||
-      markup.indexOf('id="load-photo"') < markup.indexOf('id="reference-strip"'),
-    "the load button is inside the hidden reference strip",
+    markup.includes('id="ws-source-pane"') &&
+      !/id="ws-source-pane"[^>]*hidden/.test(markup),
+    "the source pane is hidden until something asks for it",
+  );
+  assert(
+    !markup.includes('id="reference-strip"'),
+    "there is still a reference strip — the photo lives in the source pane",
   );
 });
 

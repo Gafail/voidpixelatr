@@ -1,5 +1,5 @@
 /* ==========================================================================
-   VoidPixlr — style.css
+   VoidPixelatr — style.css
 
    The Void aesthetic, unchanged from v1 and still the product:
 
@@ -25,7 +25,6 @@
   --wash: rgba(13, 13, 15, 0.45);
 
   --topbar: 48px;
-  --strip: 36px;
   --sidebar: 268px;
   --font: Inter, "JetBrains Mono", system-ui, -apple-system, sans-serif;
 }
@@ -85,11 +84,10 @@ body {
 .app {
   display: grid;
   grid-template-columns: var(--sidebar) minmax(0, 1fr);
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     "top     top"
     "alert   alert"
-    "strip   strip"
     "panels  panels"
     "sidebar centre"
     "bottom  bottom";
@@ -99,7 +97,6 @@ body {
 
 .top-bar { grid-area: top; }
 .alert { grid-area: alert; }
-.reference-strip { grid-area: strip; }
 .panel-row { grid-area: panels; }
 .sidebar { grid-area: sidebar; }
 .centre { grid-area: centre; }
@@ -239,45 +236,6 @@ body {
 
 .size-btn {
   min-width: 38px;
-}
-
-/* ── The reference strip ───────────────────────────────────────────────────── */
-
-.reference-strip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: var(--strip);
-  padding: 0 10px;
-  border-bottom: 1px solid rgba(79, 79, 255, 0.14);
-  background: rgba(79, 79, 255, 0.04);
-  overflow-x: auto;
-}
-
-.strip-name {
-  color: var(--muted);
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.strip-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.never {
-  color: var(--accent);
-  border: 1px solid var(--edge);
-  padding: 3px 7px;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
 }
 
 /* ── Inline panels ─────────────────────────────────────────────────────────── */
@@ -585,9 +543,8 @@ input[type="color"]::-moz-color-swatch {
 
 /* ── The centre ────────────────────────────────────────────────────────────── */
 
-/* Three columns in the Image mode — the controls, the photo, the canvas —
-   and one in the Draw mode. The canvas is always the last of them, so the
-   layout never reorders itself under the user. */
+/* Two columns: the photo and the canvas. The canvas is always the last of
+   them, so the layout never reorders itself under the user. */
 .centre {
   position: relative;
   display: flex;
@@ -925,10 +882,6 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 0;
 }
 
-.strip-label input[type="range"] {
-  width: 90px;
-}
-
 /* ── The 404 page ─────────────────────────────────────────────────────────── */
 
 .notfound {
@@ -965,18 +918,7 @@ input[type="range"]::-moz-range-thumb {
   font-size: 11px;
 }
 
-/* ── Narrower windows ──────────────────────────────────────────────────────── */
-
-@media (max-width: 1100px) {
-  .workspace {
-    grid-template-columns: 240px minmax(0, 1fr);
-  }
-
-  .ws-stage {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
+/* ── Short windows ─────────────────────────────────────────────────────────── */
 
 /* The shorter the window, the fewer rows of swatches. The sidebar then
    fits without scrolling, so no control is ever cut in half by the edge.
