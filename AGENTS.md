@@ -4,8 +4,8 @@
 > photo, frame it under a grid, adjust it, extract a palette, convert, export.
 > Nothing is ever uploaded.
 
-**Status:** built and tested — **not deployed**, no container, no registry row
-**Domain:** none (LAN-only when it ships)
+**Status:** built, tested — **live** at `http://192.168.100.112/`, on its own LXC
+**Domain:** none (LAN-only)
 **Brand identity:** "A photo becomes pixel art." Flat rectangles, no
 gradients, no rounded corners, no animations, no shadows except the canvas
 glow. Accent `#4f4fff` on `#0d0d0f`.
@@ -124,12 +124,25 @@ from what nginx will send.
 
 ## How to deploy
 
-**Not now.** There is no container, nothing is deployed, and there is no
-registry row in TheVoidCo. The scaffolding is here so the project is
-standalone and *can* be given a box when it wants one.
+**It is deployed.** The project lives at `http://192.168.100.112/` on its own
+LXC, hostname `VoidPixelatr`, serving static files through nginx with the
+shared security-headers snippet unmodified. The source stays here —
+`~/Desktop/voidpixelatr/` — and the umbrella holds no copy of it, only a
+pointer.
 
-`ops/PROVISION.md` is the full checklist for the day that happens. The short
-version:
+To push a change:
+
+```bash
+./deploy.sh 192.168.100.112
+```
+
+The address is mandatory and the script refuses to run without one. It
+rsyncs the web root, installs the vhost with the address substituted for the
+`192.0.2.0` placeholder, runs `nginx -t`, reloads, and smoke-tests.
+
+The first deployment went through the full runbook in `ops/PROVISION.md`, and
+the short version of it — for the day this project needs a *second* box, or
+for a rebuild from scratch:
 
 1. Provision the container (a full clone of the base template — never a
    copy of `.199`, which would carry TheVoidCo's own site). Reserve the new
@@ -148,6 +161,10 @@ version:
    only points at it. Do not rsync, copy or symlink this folder anywhere.
 5. `python3 website/scripts/sync-registry.py` then
    `node website/tests/site.test.mjs`.
+
+Steps 2, 4 and 5 are done for `.112`. The registry row is in the umbrella's
+root `README.md`, in `ops/vm.sh`, in `CREDENTIALS.md`, and on the landing
+page.
 
 ## How to debug
 
@@ -310,16 +327,25 @@ version:
 - **Canonical home: `~/Desktop/voidpixelatr/`.** This folder is the project.
   It is its own git repository. **It has no remote** — it is a local
   repository with the full history, cut from VoidPixlr r14. TheVoidCo holds
-  **no copy** of this source and **no registry row** for it. Never copy or
+  **no copy** of this source and only **points at this folder**. Never copy or
   symlink this folder into another repository; a duplicate copy is a second
   thing to forget to update, and this project has already drifted once
   because of it.
-- **Nothing is deployed.** There is no container, no vhost installed and no
-  address reserved. The container at `.100` belongs to **VoidPixlr** and
-  serves that project alone.
-- The vhost carries the placeholder `192.0.2.0` in the repository;
-  `deploy.sh` substitutes the real address when it installs it — the day
-  there is something to install it on.
+- **It is deployed**, on its own LXC at **`192.168.100.112`**, hostname
+  `VoidPixelatr`: **http://192.168.100.112/**. The container at `.100` belongs
+  to **VoidPixlr** and serves that project alone.
+- The box serves static files through nginx with the shared
+  `security-headers.conf` snippet, unmodified — the same CSP the browser
+  suites test against. The vhost on the box is the **only** server block and
+  the `default_server` on port 80; the template's `base.conf` is not enabled.
+- Registered in TheVoidCo's `ops/vm.sh`, `CREDENTIALS.md`, root `README.md`
+  and the landing page, with the shared deploy key
+  `ops/keys/thevoidco-lxc-id_ed25519`.
+- The vhost still carries the placeholder `192.0.2.0` in the repository —
+  **leave it**. `deploy.sh` substitutes the real address when it installs it.
+  A checked-in config must never name a live machine.
+- Resources: 1 core / 256 MB / 32 GB, measured at 5,278 req/s with nginx on
+  25% of the core and 60 MB used. **At the house floor — no resize needed.**
 - The house rule this project breaks, on purpose: **no storage on the
   site**. The user's photos, palettes and results live on their own
   machine, and one button forgets all of it. See §9.4 of `project.md`.

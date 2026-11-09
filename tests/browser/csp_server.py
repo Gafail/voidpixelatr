@@ -6,7 +6,7 @@ sends no Content-Security-Policy at all. That is a weaker test than it
 looks: criterion 58 says the app "runs clean under the shared CSP", and a
 server with no CSP cannot show that.
 
-This server sends exactly the headers in the umbrella's shared snippet
+This server sends exactly the headers in the shared security snippet
 (ops/nginx-snippets/security-headers.conf), parsed out of the real file
 rather than transcribed, so it cannot drift from what nginx will send. If
 the snippet changes, this changes with it.
@@ -35,11 +35,22 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 PROJECT_ROOT = HERE.parent.parent
 
-# Where the umbrella keeps the shared snippet. This project is standalone: the
-# umbrella is a SIBLING of it on the Desktop, not an ancestor. So walk up the
-# tree first (which covers a project nested inside a monorepo), then look at
-# the siblings.
+# The shared snippet, vendored into this repository so it stands on its own.
+LOCAL_SNIPPET = PROJECT_ROOT / "ops" / "nginx-snippets" / "security-headers.conf"
+
+
 def find_snippet() -> Path:
+    """The vendored copy first, then the umbrella's if it is sitting alongside.
+
+    The vendored copy is what a clone of this repository has, so it has to
+    come first or the server cannot start at all for anyone but the author.
+    The umbrella's copy is preferred when it is there, because that is the
+    file nginx actually installs — and a node test checks the two agree, so
+    the vendored copy cannot quietly drift away from it.
+    """
+    if LOCAL_SNIPPET.is_file():
+        return LOCAL_SNIPPET
+
     for directory in (PROJECT_ROOT, *PROJECT_ROOT.parents):
         candidate = directory / "ops" / "nginx-snippets" / "security-headers.conf"
         if candidate.is_file():
@@ -52,7 +63,7 @@ def find_snippet() -> Path:
 
     raise SystemExit(
         "error: could not find ops/nginx-snippets/security-headers.conf.\n"
-        "       The umbrella normally sits next to this folder on the Desktop."
+        "       It ships with this repository — check the checkout is complete."
     )
 
 

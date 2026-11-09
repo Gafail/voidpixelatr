@@ -37,14 +37,14 @@ Every section ends with a **Decision** block recording the choices made for v2.
 >   5. **The project file format is unchanged.** A conversion made here
 >      opens in VoidPixlr, and vice versa (§8.2). The `format` key is still
 >      `voidpixlr`, because it names the *format*, not the app.
->   6. **No container, no registry row, no GitHub remote.** This project is
->      local for now. It carries its own vhost and deploy script so it can
->      be given a box when it wants one, but nothing has been installed and
->      nothing has been deployed (§13).
+>   6. **It has its own container, a registry row, and no GitHub remote.** It
+>      is live at `http://192.168.100.112/`, on a dedicated LXC, serving
+>      static files through nginx with the shared security-headers snippet
+>      unmodified (§13).
 >
 >   The revision log below this entry is **VoidPixlr's history**, carried
 >   across with the code. It describes the one project this was cut from;
->   where it says "live", it means VoidPixlr is live — this one is not.
+>   where it says "live", it means VoidPixlr is live.
 >
 > - **r1 (2026-11-08)** — reference-image underlay + the 256×256 canvas.> - **r1 (2026-11-08)** — reference-image underlay + the 256×256 canvas.
 >   Rewrote §6 around a layered buffer model.
@@ -213,7 +213,7 @@ Every section ends with a **Decision** block recording the choices made for v2.
 >   This folder is now the project's own git repository, with
 >   `Gafail/VoidPixlr` as a **backup** — no Pages, no CI, no hosting. The
 >   upstream umbrella keeps only the registry row, the landing-page entry,
->   and the shared `ops/` infrastructure for the container (§13.6).
+>   and the shared `ops/` infrastructure for the container (§2).
 >
 > - **r11 (2026-11-08)** — **the controls and the page now agree with each
 >   other.** Five faults the user reported, all measured before they were
@@ -473,9 +473,10 @@ would hold a registry row that points at it, and the shared infrastructure it
 manages — the nginx snippet, the host registry and the deploy key. That
 pointer is the only association; the umbrella holds no copy of this source.
 
-**There is no registry row yet**, and there is no container (§13). The
-project is local until it is deliberately given a box. The house rules are
-not suspended by that — they are simply not yet exercised.
+**It has a registry row and a container.** The umbrella's root `README.md`,
+`ops/vm.sh`, `CREDENTIALS.md` and the landing page all point at this folder,
+and the project is served from its own LXC at `192.168.100.112` (§13). The
+pointer is the only association; the umbrella holds no copy of this source.
 
 The spec still has to agree with the house rules, not just be self-consistent.
 
@@ -492,11 +493,11 @@ The spec still has to agree with the house rules, not just be self-consistent.
 | **No `localStorage`** (hard rule 9: "No storage on the site") | ⚠️ **Approved exception — see §9.4** | The user's own photos, palettes and artwork may live on their machine. Local-only, user-controlled, clearable. Nothing goes back to the server. |
 | No third-party assets, no CDN, no web fonts | ✅ | System font stack only. |
 | Static site: nginx serves files, no runtime behind it | ✅ | No Node, no systemd unit. |
-| One container, one site | ⏳ | No container yet — §13.1. |
+| One container, one site | ✅ | Its own container, serving this site alone — §13.1. |
 | Don't edit the live server directly — go through `deploy.sh` | ✅ | §13.4. |
 | Every project is standalone — no copies, no symlinks | ✅ | This folder is the project. The umbrella holds no copy of it. |
 | `AGENTS.md` required per project | ✅ | In this project's own folder. |
-| Registry row is the canonical list | ⏳ | No row yet — §13.1. |
+| Registry row is the canonical list | ✅ | The row is in TheVoidCo's root `README.md` and the landing page — §13.1. |
 
 ### 2.2 The CSP constraint (why v1's single file is gone)
 
@@ -1981,8 +1982,8 @@ There is **no `history.js`**. The undo stack went with the brush (§7.5).
 - `serve.sh` mirrors `TheVoidCo/website/serve.sh` — `python3 -m
   http.server <port>`, no dependencies.
 - `deploy.sh` mirrors `TheVoidCo/website/deploy.sh` — rsync, install the
-  vhost, `nginx -t`, reload, smoke test. **It has not been run**, because
-  there is no container (§13).
+  vhost, `nginx -t`, reload, smoke test. **It has been run**, against the
+  container at `192.168.100.112` (§13).
 - Tests are dependency-free `node` scripts in the style of
   `TheVoidCo/website/tests/site.test.mjs`, covering the pure logic:
   nearest-colour matching, JSON validation, import of a v1 file, the grid
@@ -2016,28 +2017,26 @@ all safe.
 **LAN-only. Static. nginx serving a directory. No runtime, no backend, no
 database, no domain, no tunnel.**
 
-### 13.1 Shape — and the honest answer for now
+### 13.1 Shape
 
-**There is no container, and nothing is deployed.** This project was cut
-from VoidPixlr and has been left local on purpose: the two projects are
-separate, and this one has not been given a box of its own.
-
-What it *carries* is the shape, so that the day it wants a box the work is
-done:
+**It is deployed**, on a dedicated LXC of its own: hostname `VoidPixelatr`,
+address **`192.168.100.112`**, serving at **http://192.168.100.112/**. This
+project was cut from VoidPixlr and the two are separate — they share the
+project-file format and nothing else, and each has its own box.
 
 | Piece | State |
 |---|---|
 | `ops/nginx/voidpixelatr.conf` | Present. The vhost, with the `192.0.2.0` placeholder. |
 | `deploy.sh` | Present. rsync → install the vhost → `nginx -t` → reload → smoke test. |
 | `ops/PROVISION.md` | Present. The checklist for provisioning a box. |
-| A container | **None.** |
-| A registry row in TheVoidCo | **None.** |
+| A container | **Yes** — `.112`, hostname `VoidPixelatr`, 1 core / 256 MB / 32 GB. |
+| A registry row in TheVoidCo | **Yes** — root `README.md`, `ops/vm.sh`, `CREDENTIALS.md`, landing page. |
 | A GitHub remote | **None.** |
 
-The house rules are unchanged by the split: the umbrella would hold a
-registry row *pointing* at this folder, never a copy of it; the deploy key
-is the shared `thevoidco-lxc-id_ed25519`, never a per-project one; and the
-credentials file needs no entry for a key-auth host.
+The house rules are unchanged by the split: the umbrella holds a registry row
+*pointing* at this folder, never a copy of it; the deploy key is the shared
+`thevoidco-lxc-id_ed25519`, never a per-project one; and the credentials file
+needs no entry for a key-auth host.
 
 ### 13.2 Why LAN-only is the right call
 There is no backend to host. The app is a folder of static files and the
@@ -2053,9 +2052,10 @@ The address in the checked-in file is `192.0.2.0` — the RFC 5737
 documentation range. A checked-in config that names a live address is a
 loaded gun: one did once, and it blew away whatever was answering on it.
 `deploy.sh` substitutes the reserved address when it installs the file and
-**refuses to run** without one.
+**refuses to run** without one. The file installed on the box therefore reads
+`server_name 192.168.100.112 voidpixelatr voidpixelatr.local _`.
 
-### 13.4 The deploy path, when there is a box
+### 13.4 The deploy path
 1. `rsync` the site files into `/var/www/voidpixelatr`.
 2. Install `ops/nginx/voidpixelatr.conf` and the shared security-headers
    snippet.
@@ -2067,11 +2067,11 @@ loaded gun: one did once, and it blew away whatever was answering on it.
 5. Smoke-test the result.
 
 ### Decision
-- **No deployment, and no registry row.** The project is local until it is
-  deliberately given a box. Nothing about it is registered with TheVoidCo.
-- The deploy scaffolding stays in the folder so the project is standalone,
-  but **it has never been run** and the placeholder address is still in
-  place.
+- **Deployed, on its own box, with a registry row.** The umbrella points at
+  this folder; the source stays here.
+- `./deploy.sh 192.168.100.112` is the way to push a change. The placeholder
+  address stays in the repository — only the installed file carries the real
+  one.
 
 ---
 
@@ -2265,7 +2265,7 @@ python3 tests/browser/e2e.py --base http://127.0.0.1:8793
 python3 tests/browser/hostile.py --base http://127.0.0.1:8793
 ```
 
-All four runs are green: 67 and 31 with no CSP, 67 and 31 with the shared
+All four runs are green: 101 and 33 with no CSP, 101 and 33 with the shared
 CSP.
 
 `live.py` is the check for a **deployed** site, and it is a different thing:
@@ -2277,23 +2277,23 @@ the app boots at all under the real CSP: a blocked script would leave `VP`
 undefined and the palette unrendered, which is exactly what it looks for.
 
 ```bash
-python3 tests/browser/live.py --base http://192.168.100.100
+python3 tests/browser/live.py --base http://192.168.100.112
 ```
 
 The browser suites drive Firefox directly — `tests/browser/marionette.py` is
 a minimal client for Firefox's built-in Marionette protocol, so there is no
-geckodriver to install and no npm to run. Nothing is mocked: the tests
-paint real strokes, load a real PNG through a real file input, read the
-real `performance` resource timings to prove the pipeline made no network
-request, and write the exported files to disk to check them.
+geckodriver to install and no npm to run. Nothing is mocked: the tests load
+a real PNG through a real file input, read the real `performance` resource
+timings to prove the pipeline made no network request, and write the exported
+files to disk to check them.
 
-**The criteria that needed the container are now met.** Criterion 61 is
-verified by the deploy itself: `nginx -t` passes before any reload, the
-template's own site is disabled first, and the smoke test returns 200 for
-the site and its assets. Criterion 62 is verified by the registry row and
-the regenerated landing page, which now lists VoidPixlr as LAN-only with a
-link to `http://192.168.100.100/`. Everything else is verified against the
-running app.
+**The criteria that needed the container are now met.** The deploy verifies
+itself: `nginx -t` passes before any reload, the template's own site is
+disabled first, and the smoke test returns 200 for the site and its assets.
+The registry row and the regenerated landing page list VoidPixelatr as
+LAN-only with a link to `http://192.168.100.112/`. `live.py` then confirms
+the deployed site boots under the real CSP, converts a photo, and makes no
+off-origin request. Everything else is verified against the running app.
 
 The criteria that describe the *house style* rather than the app — 58, 59,
 60, 64 — are checked by reading the real source files in the node suite:
@@ -2305,14 +2305,14 @@ animation, no rounded corner and exactly one shadow, the canvas glow.
 
 ### 16.7 The deployment path
 
-**Not applicable to this project yet — there is no container and nothing has
-been deployed** (§13.1). The scaffolding is inherited from VoidPixlr and the
+**Exercised.** The project is deployed on its own container at
+`192.168.100.112` (§13.1). The scaffolding is inherited from VoidPixlr and the
 faults below are the ones that were fixed there; the same guard tests run
 against this project's copy of the script, so the three faults cannot come
 back here either.
 
 The deploy path was audited against a real nginx before the container
-exists, and **three faults were found that would have stopped the first
+existed, and **three faults were found that would have stopped the first
 deployment**. All three are now fixed and guarded by tests.
 
 **The placeholder address was a live machine.** The vhost named
@@ -2889,7 +2889,7 @@ reason.
 | 19 | No persistence | `localStorage` autosave **+ IndexedDB for the photo** | Palettes that vanish on reload are useless, and neither should the photo. **Approved house-rule exception** (§9.4). |
 | 20 | 3 shortcuts | 19 shortcuts | A tool needs keyboard access. |
 | 21 | "Double-click to open" | LAN container + nginx + `deploy.sh` | The house deployment shape (§13). |
-| 22 | House alignment | Registry row pointing at this folder, `AGENTS.md`, landing-page sync | TheVoidCo pointer (§13.6). |
+| 22 | House alignment | Registry row pointing at this folder, `AGENTS.md`, landing-page sync | TheVoidCo pointer (§2). |
 | 23 | Filenames fixed | `voidpixlr-<size>x<size>.<ext>` | Multiple files need distinct names. |
 | 24 | No tests | Dependency-free node logic tests | The house pattern (`website/tests/`). |
 | 25 | Mobile out of scope | Still out of scope | Unchanged — deliberately. |
@@ -2937,9 +2937,10 @@ and so that changing one is a deliberate act.
 12. **Source adjustments run before sampling, not after** (§7.3). This is the
     difference between a washed-out photo that pixelates to mud and one that
     pixelates to a sprite.
-13. **No deployment, and no registry row.** The project is local until it is
-    deliberately given a box. The deploy scaffolding is in the folder so it
-    can be, but it has never been run.
+13. **It gets its own container and its own registry row.** The project is
+    deployed at `http://192.168.100.112/`, on a dedicated LXC, with TheVoidCo
+    pointing at this folder. The deploy scaffolding lives in the folder and
+    is what put it there (§13).
 
 ---
 
@@ -2970,7 +2971,7 @@ A photo becomes pixel art. A tool. A Void.
 
 ## 21. Build Status
 
-**Built and tested. Not deployed.**
+**Built, tested, and deployed.**
 
 The source in this folder is the VoidPixelatr v1.0 build, cut from VoidPixlr
 r14 and split along the idea.
@@ -2979,45 +2980,48 @@ r14 and split along the idea.
   dependencies, no framework.
 - **141 node checks, 101 end-to-end browser checks, 33 hostile-input
   checks** — all passing, all dependency-free. The browser suites also pass
-  against the real shared CSP.
-- **No container, no deployment, no registry row, no GitHub remote.** The
-  project is local. `ops/nginx/voidpixelatr.conf` and `deploy.sh` are in the
-  folder so it can be given a box when it wants one; the vhost still carries
-  the `192.0.2.0` placeholder and the deploy script has never been run.
-- The container that serves VoidPixlr is VoidPixlr's alone. This project has
-  no box of its own and shares no filesystem with anything.
+  against the real shared CSP, and against the live site at
+  `http://192.168.100.112/`.
+- **Live on its own container**, `192.168.100.112`, hostname `VoidPixelatr`:
+  **http://192.168.100.112/**. nginx serves the static files with the shared
+  security-headers snippet unmodified. Registered in TheVoidCo's root
+  `README.md`, `ops/vm.sh`, `CREDENTIALS.md` and the landing page. **No
+  GitHub remote** — the source stays in this folder.
+- The vhost in the repository still carries the `192.0.2.0` placeholder and
+  **must**: only the copy installed on the box carries the real address.
+- The container that serves VoidPixlr is VoidPixlr's alone. This project has a
+  box of its own and shares no filesystem with anything.
 
-The specification and the build are in step. The two acceptance criteria
-that depended on a container are marked as not applicable, and the ones that
-depend on the pipeline are met.
+The specification and the build are in step. The acceptance criteria that
+depend on the container are met, and the ones that depend on the pipeline are
+met.
 
 
-**Built, tested and live.** The source in this folder is the v2.0 r14 build,
-serving at **http://192.168.100.100/**.
+**Built, tested and live.** The source in this folder is the VoidPixelatr v1.0
+build, serving at **http://192.168.100.112/**.
 
 - Nine JavaScript modules, one stylesheet, one HTML file. No build step, no
   dependencies, no framework.
-- 130 node checks, 92 end-to-end browser checks, 31 hostile-input checks,
-  14 live-site checks — all passing, all dependency-free. Both browser
+- 141 node checks, 101 end-to-end browser checks, 33 hostile-input checks,
+  11 live-site checks — all passing, all dependency-free. Both browser
   suites also pass against the real shared CSP.
-- **Deployed and verified.** `./deploy.sh 192.168.100.100` installs the
+- **Deployed and verified.** `./deploy.sh 192.168.100.112` installs the
   site, the vhost and the shared security-headers snippet, disables the
   template's own site, validates with `nginx -t` before reloading, and
   smoke-tests the result. The live site serves the exact shared CSP, and
   the app boots, loads a photo — **including one over the working cap** —
   and runs the whole pipeline under it (§16.1, §16.7, §16.9).
-- The container at `.100` was brought into line with the house rules: its
+- The container at `.112` was brought into line with the house rules: its
   SSH host keys were regenerated (the clone had inherited the template's
-  identity, which `.198` still uses), and the Node.js, npm and `appctl`
-  machinery were removed. It is a static site with no runtime.
-- Measured at **5,406 req/s** with zero errors, 53 MB of 1024 MB used,
-  236 KB of site on disk. The house floor is 1 core / 256 MB; **the
-  container can be dropped to that** — it needs a fraction of one core.
+  identity, which `.198` still uses), and it serves one static site with no
+  runtime.
+- Measured at **5,278 req/s** with zero errors, 60 MB of 256 MB used. The
+  house floor is 1 core / 256 MB, and the container sits **at** it — it needs
+  a fraction of one core, so no resize is needed.
 - The vhost in the repository carries `192.0.2.0` — the RFC 5737
   documentation range — as a placeholder. `deploy.sh` substitutes the real
   address when it installs it and refuses to run without one, so a
   checked-in config can never name a machine that is already serving
   something else.
 
-The specification and the deployment are now in step. The two acceptance
-criteria that depended on the container (§16.61, §16.62) are met.
+The specification and the deployment are now in step.

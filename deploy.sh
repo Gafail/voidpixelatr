@@ -23,10 +23,21 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # (~/Desktop/voidpixelatr and ~/Desktop/TheVoidCo), not a child of it. So the
 # umbrella is found by walking up the tree, and then by looking at the
 # siblings of this folder. Set REPO_ROOT to override both.
+# Is this directory the umbrella repository?
+#
+# The shared headers are vendored into THIS project too, so the old test —
+# "does it have ops/nginx-snippets/security-headers.conf?" — would match this
+# folder and point REPO_ROOT at itself. The umbrella is the one that also
+# holds the shared deploy key, so that is what tells them apart.
+is_umbrella() {
+  [ -f "$1/ops/nginx-snippets/security-headers.conf" ] &&
+    [ -d "$1/ops/keys" ]
+}
+
 find_repo_root() {
   local dir="$1"
   while [ "$dir" != "/" ]; do
-    if [ -f "$dir/ops/nginx-snippets/security-headers.conf" ]; then
+    if is_umbrella "$dir"; then
       echo "$dir"
       return 0
     fi
@@ -38,7 +49,7 @@ find_repo_root() {
   parent="$(dirname -- "$1")"
   for sibling in "$parent"/*/; do
     [ -d "$sibling" ] || continue
-    if [ -f "$sibling/ops/nginx-snippets/security-headers.conf" ]; then
+    if is_umbrella "$sibling"; then
       echo "${sibling%/}"
       return 0
     fi
@@ -48,11 +59,27 @@ find_repo_root() {
 }
 
 REPO_ROOT="$(find_repo_root "$SCRIPT_DIR" || true)"
-if [ -z "${REPO_ROOT:-}" ]; then
-  echo "error: could not find the umbrella repo (ops/nginx-snippets/security-headers.conf)." >&2
-  echo "       It normally sits next to this folder on the Desktop." >&2
-  echo "       Point REPO_ROOT at it, or set VOIDPIXELATR_KEY and copy the snippet by hand." >&2
+
+# The shared security headers are vendored into this repository, so the deploy
+# works on a clone that has no umbrella beside it. When the umbrella IS there,
+# its copy is the one that gets installed — it is the file nginx serves the
+# rest of the family from — and a node test checks the two agree.
+LOCAL_SNIPPET="$SCRIPT_DIR/ops/nginx-snippets/security-headers.conf"
+if [ -n "${REPO_ROOT:-}" ] && [ -f "$REPO_ROOT/ops/nginx-snippets/security-headers.conf" ]; then
+  SNIPPET="$REPO_ROOT/ops/nginx-snippets/security-headers.conf"
+elif [ -f "$LOCAL_SNIPPET" ]; then
+  SNIPPET="$LOCAL_SNIPPET"
+else
+  echo "error: could not find the shared security headers." >&2
+  echo "       They ship with this repository at" >&2
+  echo "       ops/nginx-snippets/security-headers.conf — check the checkout" >&2
+  echo "       is complete." >&2
   exit 1
+fi
+
+if [ -z "${REPO_ROOT:-}" ]; then
+  echo "note: no umbrella repository found — using the security headers" >&2
+  echo "      vendored in this one." >&2
 fi
 
 # The host address is reserved in the router at provisioning time and
@@ -68,7 +95,16 @@ USER="${VOIDPIXELATR_USER:-root}"
 # (ops/keys/thevoidco-lxc-id_ed25519). A container cloned from the template
 # inherits it in /root/.ssh/authorized_keys, so this is the same key every
 # other Void* host uses — not a per-project key.
-KEY="${VOIDPIXELATR_KEY:-$REPO_ROOT/ops/keys/thevoidco-lxc-id_ed25519}"
+#
+# It lives in the umbrella repository, not in this one, so a clone without it
+# beside it needs VOIDPIXELATR_KEY pointed at its own copy.
+if [ -n "${VOIDPIXELATR_KEY:-}" ]; then
+  KEY="$VOIDPIXELATR_KEY"
+elif [ -n "${REPO_ROOT:-}" ]; then
+  KEY="$REPO_ROOT/ops/keys/thevoidco-lxc-id_ed25519"
+else
+  KEY=""
+fi
 WEBROOT="/var/www/voidpixelatr"
 
 # The token in the checked-in vhost that stands in for the real address.
@@ -116,6 +152,7 @@ RSYNC=(rsync -az --delete --chmod=D755,F644
        --exclude='*.pyc' --exclude='.env'
        --exclude='/docs/' --exclude='/tests/' --exclude='/scripts/'
        --exclude='/tools/' --exclude='/ops/' --exclude='*.md'
+       --exclude='/.github/'
        --exclude='/serve.sh' --exclude='/deploy.sh')
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
@@ -132,7 +169,7 @@ say "Uploading site files to ${HOST}:${WEBROOT}"
 say "Installing nginx configuration"
 "${SSH[@]}" "$USER@$HOST" "install -d -m 755 /etc/nginx/snippets /etc/nginx/sites-available"
 
-"${SCP[@]}" "$REPO_ROOT/ops/nginx-snippets/security-headers.conf" \
+"${SCP[@]}" "$SNIPPET" \
   "$USER@$HOST:/tmp/security-headers.conf"
 "${SCP[@]}" "$SCRIPT_DIR/ops/nginx/voidpixelatr.conf" \
   "$USER@$HOST:/tmp/voidpixelatr.conf"

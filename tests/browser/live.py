@@ -18,8 +18,8 @@ Point it at the CSP server to check the real headers:
     python3 tests/browser/csp_server.py --port 8793 &
     python3 tests/browser/live.py --base http://127.0.0.1:8793
 
-There is no container for this project yet and nothing is deployed. The
-check exists so that the day there is one, the site is verified the same way.
+There is a container for this project and it is deployed at
+http://192.168.100.112/. This is the check for it.
 
 What it checks:
 

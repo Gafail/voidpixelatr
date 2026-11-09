@@ -1362,6 +1362,7 @@ check("the deploy ships the site and nothing else", () => {
     "/tools/",
     "/ops/",
     "*.md",
+    "/.github/",
     "/serve.sh",
     "/deploy.sh",
   ]) {
@@ -1410,6 +1411,58 @@ check("the CSP test server sends the real shared headers", () => {
     server.includes("Content-Security-Policy"),
     "the CSP server does not check for a Content-Security-Policy",
   );
+});
+
+check("the project ships the shared headers, so it stands on its own", () => {
+  /* The shared snippet is vendored into this repository, so a clone can run
+     the CSP server and the deploy script without a sibling checkout. That
+     only works if the two copies agree — so when the umbrella's copy is
+     sitting alongside, the vendored one is compared against it. */
+  const vendored = read("ops", "nginx-snippets", "security-headers.conf");
+  assert(
+    vendored.includes("Content-Security-Policy"),
+    "the vendored snippet has no Content-Security-Policy",
+  );
+
+  const headers = (text) => {
+    const found = {};
+    const pattern = /add_header\s+([A-Za-z0-9-]+)\s+"([^"]*)"/g;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      found[match[1]] = match[2];
+    }
+    return found;
+  };
+
+  const local = headers(vendored);
+  assert(
+    local["Content-Security-Policy"].includes("script-src 'self'"),
+    "the vendored snippet does not carry script-src 'self'",
+  );
+
+  /* The umbrella's copy, if this repository sits next to it. */
+  const umbrella = join(
+    ROOT,
+    "..",
+    "TheVoidCo",
+    "ops",
+    "nginx-snippets",
+    "security-headers.conf"
+  );
+  let umbrellaText = null;
+  try {
+    umbrellaText = readFileSync(umbrella, "utf8");
+  } catch {
+    umbrellaText = null;
+  }
+
+  if (umbrellaText) {
+    assertDeep(
+      local,
+      headers(umbrellaText),
+      "the vendored security headers have drifted from the umbrella's copy",
+    );
+  }
 });
 
 /* --- the UI fixes ---------------------------------------------------------- */
