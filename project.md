@@ -37,10 +37,12 @@ Every section ends with a **Decision** block recording the choices made for v2.
 >   5. **The project file format is unchanged.** A conversion made here
 >      opens in VoidPixlr, and vice versa (§8.2). The `format` key is still
 >      `voidpixlr`, because it names the *format*, not the app.
->   6. **It has its own container, a registry row, and no GitHub remote.** It
->      is live at `http://192.168.100.112/`, on a dedicated LXC, serving
->      static files through nginx with the shared security-headers snippet
->      unmodified (§13).
+>   6. **It has its own container and a registry row.** It is live at
+>      `http://192.168.100.112/`, on a dedicated LXC, serving static files
+>      through nginx with the shared security-headers snippet unmodified
+>      (§13). There is also a **public GitHub mirror** — a backup, and only
+>      a backup: it is not the project's home and nothing is published or
+>      deployed from it (§13.7).
 >
 >   The revision log below this entry is **VoidPixlr's history**, carried
 >   across with the code. It describes the one project this was cut from;
@@ -2031,7 +2033,7 @@ project-file format and nothing else, and each has its own box.
 | `ops/PROVISION.md` | Present. The checklist for provisioning a box. |
 | A container | **Yes** — `.112`, hostname `VoidPixelatr`, 1 core / 256 MB / 32 GB. |
 | A registry row in TheVoidCo | **Yes** — root `README.md`, `ops/vm.sh`, `CREDENTIALS.md`, landing page. |
-| A GitHub remote | **None.** |
+| A GitHub remote | **A public mirror — a backup, and only a backup.** See §13.7. |
 
 The house rules are unchanged by the split: the umbrella holds a registry row
 *pointing* at this folder, never a copy of it; the deploy key is the shared
@@ -2066,12 +2068,35 @@ loaded gun: one did once, and it blew away whatever was answering on it.
 4. `nginx -t`, then reload.
 5. Smoke-test the result.
 
+### 13.7 The GitHub mirror — a backup, and only a backup
+
+There is a public repository at `https://github.com/Gafail/voidpixelatr`.
+
+**What it is for.** A backup. The work is on one machine, and one machine
+can be lost. The mirror means the history, the code and the specification
+survive that.
+
+**What it is not.** It is not the project's home — the canonical home is the
+folder the project lives in, and the umbrella only points at it. It is not
+where the site is served from: the live site is the container at
+`192.168.100.112`, and that is the only thing serving it. And it is not a
+place anything is published or deployed from.
+
+**Nothing runs there.** No CI, no actions, no releases, no pages. A mirror
+that can act becomes a second source of truth, and then it is no longer a
+backup — it is a fork with a pulse. If the mirror and the canonical folder
+ever disagree, the canonical folder is right.
+
+The mirror is public, because a backup nobody can read is not a backup.
+
 ### Decision
 - **Deployed, on its own box, with a registry row.** The umbrella points at
   this folder; the source stays here.
 - `./deploy.sh 192.168.100.112` is the way to push a change. The placeholder
   address stays in the repository — only the installed file carries the real
   one.
+- **GitHub mirrors the source and nothing else.** It is a backup; the
+  canonical folder and the container are the project.
 
 ---
 
@@ -2985,8 +3010,10 @@ r14 and split along the idea.
 - **Live on its own container**, `192.168.100.112`, hostname `VoidPixelatr`:
   **http://192.168.100.112/**. nginx serves the static files with the shared
   security-headers snippet unmodified. Registered in TheVoidCo's root
-  `README.md`, `ops/vm.sh`, `CREDENTIALS.md` and the landing page. **No
-  GitHub remote** — the source stays in this folder.
+  `README.md`, `ops/vm.sh`, `CREDENTIALS.md` and the landing page.
+- **There is a public GitHub mirror, and it is a backup only** — not the
+  project's home, and not a place anything is published or deployed from
+  (§13.7). The source stays in this folder.
 - The vhost in the repository still carries the `192.0.2.0` placeholder and
   **must**: only the copy installed on the box carries the real address.
 - The container that serves VoidPixlr is VoidPixlr's alone. This project has a

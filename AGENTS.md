@@ -140,6 +140,13 @@ The address is mandatory and the script refuses to run without one. It
 rsyncs the web root, installs the vhost with the address substituted for the
 `192.0.2.0` placeholder, runs `nginx -t`, reloads, and smoke-tests.
 
+**GitHub is a separate thing, and it is only a backup.** The mirror at
+`https://github.com/Gafail/voidpixelatr` keeps the work safe if this
+machine is lost. It is **not** where the site is served from and **not**
+where anything is deployed to — the container above is the only thing
+serving it. Nothing runs on GitHub: no CI, no actions, no releases. If the
+mirror and this folder ever disagree, this folder is right.
+
 The first deployment went through the full runbook in `ops/PROVISION.md`, and
 the short version of it — for the day this project needs a *second* box, or
 for a rebuild from scratch:
@@ -325,12 +332,18 @@ page.
 ## Live operations state
 
 - **Canonical home: `~/Desktop/voidpixelatr/`.** This folder is the project.
-  It is its own git repository. **It has no remote** — it is a local
-  repository with the full history, cut from VoidPixlr r14. TheVoidCo holds
-  **no copy** of this source and only **points at this folder**. Never copy or
-  symlink this folder into another repository; a duplicate copy is a second
-  thing to forget to update, and this project has already drifted once
-  because of it.
+  It is its own git repository, with the full history, cut from VoidPixlr r14.
+  TheVoidCo holds **no copy** of this source and only **points at this folder**.
+  Never copy or symlink this folder into another repository; a duplicate copy
+  is a second thing to forget to update, and this project has already drifted
+  once because of it.
+- **GitHub is a backup, and only a backup.** There is a public mirror at
+  `https://github.com/Gafail/voidpixelatr` so the work is not lost with this
+  machine. It is **not** the project's home, **not** where the site is served
+  from, and **not** a place anything is deployed to or published from. It
+  mirrors the canonical folder; if the two ever disagree, this folder is
+  right. Nothing runs there — no CI, no actions, no releases — so a mirror
+  cannot quietly become a second source of truth.
 - **It is deployed**, on its own LXC at **`192.168.100.112`**, hostname
   `VoidPixelatr`: **http://192.168.100.112/**. The container at `.100` belongs
   to **VoidPixlr** and serves that project alone.
